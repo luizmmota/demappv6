@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEMAPP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0f1117;--surface:#1a1d2e;--surface2:#232640;--border:#2e3250;
+  --accent:#6c63ff;--accent2:#ff6584;--green:#10b981;--orange:#f59e0b;
+  --red:#ef4444;--blue:#3b82f6;--text:#e2e8f0;--muted:#64748b;
+  --font:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;}
+#setup{display:flex;align-items:flex-start;justify-content:center;min-height:100vh;padding:2rem;}
+.setup-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2.5rem;max-width:640px;width:100%;margin:auto;}
+.setup-logo{font-size:2rem;font-weight:900;letter-spacing:0.06em;margin-bottom:0.25rem;}
+.setup-logo span{color:var(--accent);}
+.setup-sub{color:var(--muted);font-size:0.9rem;margin-bottom:1.5rem;}
+.setup-warn{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:0.75rem 1rem;font-size:0.8rem;color:#fca5a5;margin-bottom:1.75rem;}
+.ss{margin-top:1.5rem;margin-bottom:0.6rem;padding-bottom:0.4rem;border-bottom:1px solid var(--border);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);}
+.fg{margin-bottom:0.9rem;}
+.fg label{display:block;font-size:0.73rem;color:var(--muted);margin-bottom:0.3rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;}
+.fg input{width:100%;padding:0.65rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.875rem;font-family:monospace;transition:border-color 0.15s;}
+.fg input:focus{outline:none;border-color:var(--accent);}
+.fg small{color:var(--muted);font-size:0.71rem;margin-top:0.25rem;display:block;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;}
+.badge{display:inline-flex;align-items:center;gap:0.4rem;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px;padding:0.28rem 0.65rem;font-size:0.73rem;color:var(--green);margin-bottom:0.6rem;}
+.btn-launch{width:100%;padding:0.95rem;background:var(--accent);color:white;border:none;border-radius:8px;font-size:1rem;font-weight:800;cursor:pointer;margin-top:1.25rem;transition:opacity 0.2s;}
+.btn-launch:hover{opacity:0.85;}
+
+/* WHOOP MODAL */
+#wmodal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;align-items:center;justify-content:center;}
+#wmodal.open{display:flex;}
+.mcard{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;max-width:480px;width:90%;text-align:center;}
+.mcard h3{font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;}
+.mcard .ms{color:var(--muted);font-size:0.85rem;margin-bottom:1.25rem;line-height:1.6;}
+.msteps{text-align:left;background:var(--surface2);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.25rem;list-style:decimal;padding-left:2.25rem;}
+.msteps li{font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;line-height:1.5;}
+.msteps li:last-child{margin-bottom:0;}
+.minput{width:100%;padding:0.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem;font-family:monospace;margin-bottom:0.65rem;}
+.minput:focus{outline:none;border-color:var(--green);}
+.mstatus{font-size:0.8rem;min-height:1.4em;margin-bottom:0.75rem;}
+.btn-g{width:100%;padding:0.75rem;background:var(--green);border:none;border-radius:8px;color:white;font-size:0.9rem;font-weight:700;cursor:pointer;margin-bottom:0.5rem;}
+.btn-ghost{width:100%;padding:0.6rem;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:0.85rem;cursor:pointer;}
+
+/* APP */
+#app{display:none;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
+.logo{padding:1.4rem 1.25rem;border-bottom:1px solid var(--border);}
+.logo h2{font-size:1.25rem;font-weight:900;letter-spacing:0.08em;}
+.logo h2 span{color:var(--accent);}
+.logo p{font-size:0.7rem;color:var(--muted);margin-top:0.15rem;}
+.nav{flex:1;padding:1rem 0;}
+.ni{display:flex;align-items:center;gap:0.75rem;padding:0.7rem 1.25rem;cursor:pointer;font-size:0.875rem;color:var(--muted);transition:all 0.15s;border-left:3px solid transparent;user-select:none;}
+.ni:hover{background:var(--surface2);color:var(--text);}
+.ni.active{background:var(--surface2);color:var(--accent);border-left-color:var(--accent);}
+.ni .ic{font-size:1.1rem;width:20px;text-align:center;}
+.sfooter{padding:1rem 1.25rem;border-top:1px solid var(--border);}
+.btn-set{width:100%;padding:0.6rem;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:0.8rem;cursor:pointer;transition:all 0.15s;}
+.btn-set:hover{border-color:var(--accent);color:var(--accent);}
+.main{margin-left:220px;min-height:100vh;}
+.topbar{padding:1.2rem 2rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);position:sticky;top:0;z-index:50;}
+.topbar h1{font-size:1.2rem;font-weight:700;}
+.tbr{display:flex;align-items:center;gap:0.85rem;}
+.btn-ref{padding:0.45rem 0.9rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.8rem;cursor:pointer;transition:all 0.15s;}
+.btn-ref:hover{border-color:var(--accent);color:var(--accent);}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.content{padding:2rem;}
+.page{display:none;}.page.active{display:block;}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;}
+.ctitle{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;}
+.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:1.5rem;margin-bottom:1.5rem;}
+.mc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem;}
+.ml{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;}
+.mv{font-size:2rem;font-weight:700;line-height:1;}
+.msb{font-size:0.73rem;color:var(--muted);margin-top:0.4rem;}
+.cg{color:var(--green);}.co{color:var(--orange);}.cr{color:var(--red);}.cb{color:var(--blue);}.cp{color:var(--accent);}
+
+/* WHOOP CTA */
+.wcta{background:linear-gradient(135deg,rgba(16,185,129,0.1),rgba(16,185,129,0.03));border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+.wcta h3{font-size:0.95rem;font-weight:700;margin-bottom:0.2rem;}
+.wcta p{font-size:0.78rem;color:var(--muted);}
+.btn-wc{padding:0.6rem 1.25rem;background:var(--green);border:none;border-radius:8px;color:white;font-size:0.85rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+
+/* HERO */
+.hero{display:flex;align-items:center;gap:2rem;padding:1.5rem;background:var(--surface2);border-radius:12px;margin-bottom:1.5rem;}
+.circle{width:100px;height:100px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.8rem;font-weight:800;border:4px solid;}
+.rg{border-color:var(--green);color:var(--green);}
+.ro{border-color:var(--orange);color:var(--orange);}
+.rr{border-color:var(--red);color:var(--red);}
+.hi h2{font-size:1.25rem;margin-bottom:0.4rem;}
+.hi p{color:var(--muted);font-size:0.875rem;line-height:1.6;}
+
+/* AI BOX */
+.aibox{background:linear-gradient(135deg,rgba(108,99,255,0.1),rgba(255,101,132,0.05));border:1px solid rgba(108,99,255,0.3);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;}
+.aih{display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;}
+.aibadge{background:var(--accent);color:white;font-size:0.68rem;font-weight:700;padding:0.22rem 0.6rem;border-radius:4px;text-transform:uppercase;letter-spacing:0.06em;}
+.ait{font-size:0.88rem;line-height:1.75;}
+.ait p{margin-bottom:0.75rem;}.ait p:last-child{margin-bottom:0;}
+
+/* STALE */
+.stale{background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.4);border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+.stale strong{color:var(--orange);font-size:0.875rem;display:block;}
+.stale p{color:var(--muted);font-size:0.78rem;margin-top:0.2rem;}
+.btn-or{padding:0.5rem 1rem;background:var(--orange);border:none;border-radius:6px;color:white;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap;}
+
+/* FITNESS */
+.eform{background:linear-gradient(135deg,rgba(108,99,255,0.08),rgba(108,99,255,0.03));border:1px solid rgba(108,99,255,0.3);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;}
+.eform h3{font-size:0.95rem;font-weight:700;margin-bottom:0.25rem;}
+.esub{font-size:0.78rem;color:var(--muted);margin-bottom:1.25rem;}
+.erow{display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;}
+.erow label{font-size:0.73rem;color:var(--muted);font-weight:600;text-transform:uppercase;white-space:nowrap;}
+.erow input{padding:0.5rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.875rem;}
+.e4{display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem;margin-bottom:1rem;}
+.e3{display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;}
+.ef label{display:block;font-size:0.68rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.28rem;}
+.ef input{width:100%;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.95rem;font-weight:600;text-align:center;}
+.ef input:focus{outline:none;border-color:var(--accent);}
+.eact{display:flex;gap:0.75rem;align-items:center;}
+.btn-save{padding:0.65rem 1.5rem;background:var(--accent);border:none;border-radius:8px;color:white;font-size:0.9rem;font-weight:700;cursor:pointer;}
+.btn-save:disabled{opacity:0.4;cursor:not-allowed;}
+.est{font-size:0.82rem;}.est.ok{color:var(--green);}.est.err{color:var(--red);}
+
+/* CHAT */
+.cwrap{display:flex;flex-direction:column;height:calc(100vh - 140px);}
+.cmsgs{flex:1;overflow-y:auto;padding:1.5rem;display:flex;flex-direction:column;gap:1rem;}
+.msg{display:flex;gap:0.75rem;max-width:85%;}
+.msg.user{align-self:flex-end;flex-direction:row-reverse;}
+.av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.875rem;}
+.av.ai{background:var(--accent);}.av.user{background:var(--surface2);border:1px solid var(--border);}
+.bub{padding:0.75rem 1rem;border-radius:12px;font-size:0.875rem;line-height:1.6;}
+.msg.ai .bub{background:var(--surface);border:1px solid var(--border);}
+.msg.user .bub{background:var(--accent);color:white;}
+.chips{padding:0 1.5rem 1rem;display:flex;gap:0.5rem;flex-wrap:wrap;}
+.chip{padding:0.4rem 0.75rem;background:var(--surface2);border:1px solid var(--border);border-radius:20px;font-size:0.78rem;color:var(--muted);cursor:pointer;transition:all 0.15s;}
+.chip:hover{border-color:var(--accent);color:var(--accent);}
+.cia{padding:1rem 1.5rem;border-top:1px solid var(--border);display:flex;gap:0.75rem;background:var(--surface);}
+.cin{flex:1;padding:0.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;font-family:var(--font);resize:none;height:44px;}
+.cin:focus{outline:none;border-color:var(--accent);}
+.btn-send{padding:0.75rem 1.25rem;background:var(--accent);border:none;border-radius:8px;color:white;cursor:pointer;font-size:0.9rem;font-weight:600;}
+.btn-send:disabled{opacity:0.4;cursor:not-allowed;}
+
+/* WORKOUTS */
+.wlist{display:flex;flex-direction:column;gap:0.75rem;}
+.wi{display:flex;align-items:center;gap:1rem;padding:1rem 1.25rem;background:var(--surface2);border-radius:10px;border-left:4px solid var(--muted);}
+.wi-Run{border-left-color:var(--blue)!important;}.wi-Ride,.wi-Bike{border-left-color:var(--green)!important;}
+.wi-Swim{border-left-color:var(--orange)!important;}.wi-Strength{border-left-color:var(--accent)!important;}
+.wi-Brick{border-left-color:var(--accent2)!important;}.wi-Rest{border-left-color:var(--muted)!important;}
+.we{font-size:1.4rem;width:32px;text-align:center;}
+.winfo{flex:1;}.wt{font-size:0.9rem;font-weight:600;}.wm{font-size:0.77rem;color:var(--muted);margin-top:0.2rem;}
+.tpill{font-size:0.78rem;font-weight:700;padding:0.22rem 0.55rem;background:var(--bg);border-radius:6px;color:var(--muted);white-space:nowrap;}
+.spill{font-size:0.65rem;font-weight:700;padding:0.15rem 0.45rem;border-radius:4px;}
+.spi{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.3);}
+.sps{background:rgba(59,130,246,0.15);color:var(--blue);border:1px solid rgba(59,130,246,0.3);}
+
+/* MISC */
+.cw{position:relative;height:220px;}
+.rbanner{background:linear-gradient(135deg,rgba(108,99,255,0.15),rgba(255,101,132,0.1));border:1px solid rgba(108,99,255,0.3);border-radius:12px;padding:1.25rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;}
+.rdays{font-size:2.5rem;font-weight:800;color:var(--accent);}
+.rrow{display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;}
+.rrow input{padding:0.5rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;}
+.bsm{padding:0.5rem 0.9rem;background:var(--accent);border:none;border-radius:6px;color:white;font-size:0.8rem;cursor:pointer;font-weight:600;}
+.loading{display:flex;align-items:center;gap:0.5rem;color:var(--muted);font-size:0.85rem;padding:1rem 0;}
+.spin{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg);}}
+.ab{padding:0.6rem 1rem;border-radius:8px;font-size:0.8rem;margin-bottom:1rem;}
+.ag{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);color:var(--green);}
+.ar{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;}
+.ay{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:var(--orange);}
+::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:var(--bg);}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- WHOOP MODAL -->
+<div id="wmodal">
+  <div class="mcard">
+    <div style="font-size:2.5rem;margin-bottom:0.5rem">💚</div>
+    <h3>Connect Whoop</h3>
+    <p class="ms">A Whoop login page has opened in a new tab. Follow these steps:</p>
+    <ol class="msteps">
+      <li>Log in to Whoop and click <strong>Approve</strong></li>
+      <li>You'll land on a page that says <em>"This site can't be reached"</em> — that's normal</li>
+      <li>Copy the <strong>entire URL</strong> from the address bar</li>
+      <li>Paste it below and click Connect</li>
+    </ol>
+    <input class="minput" id="m-url" placeholder="http://localhost/?code=abc123..."/>
+    <div class="mstatus" id="m-status"></div>
+    <button class="btn-g" onclick="submitCode()">Connect Whoop →</button>
+    <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- SETUP -->
+<div id="setup">
+  <div class="setup-card">
+    <div class="setup-logo"><span>DEM</span>APP</div>
+    <div class="setup-sub">Your personal AI triathlon coach — powered by Claude</div>
+    <div class="setup-warn">🔒 All credentials stored locally in your browser only — never shared.</div>
+
+    <div class="ss">🤖 Claude AI</div>
+    <div class="fg"><label>Anthropic API Key</label><input type="password" id="s-key" placeholder="sk-ant-api03-..."/><small>console.anthropic.com → API Keys</small></div>
+
+    <div class="ss">💚 Whoop</div>
+    <small style="color:var(--muted);font-size:0.72rem;display:block;margin-bottom:0.6rem">Get credentials at developer.whoop.com — you'll authorize after launching</small>
+    <div class="two">
+      <div class="fg"><label>Client ID</label><input type="text" id="s-wid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
+      <div class="fg"><label>Client Secret</label><input type="password" id="s-wsec" placeholder="Your client secret"/></div>
+    </div>
+
+    <div class="ss">🗓️ TrainingPeaks iCal <span style="color:var(--green);font-size:0.8em;font-weight:400;text-transform:none;letter-spacing:0"> — auto-syncs planned workouts</span></div>
+    <div class="badge">✅ Recommended — no manual entry needed</div>
+    <div class="fg"><label>TrainingPeaks iCal URL</label><input type="text" id="s-ical" placeholder="https://www.trainingpeaks.com/ical/YOUR_TOKEN.ics"/><small>Calendar → gear → Share Calendar → change webcal:// to https://</small></div>
+
+    <div class="ss">📊 Google Sheets CSV URLs</div>
+    <small style="color:var(--muted);font-size:0.72rem;display:block;margin-bottom:0.75rem">File → Share → Publish to web → select each tab individually → CSV → copy URL</small>
+    <div class="fg"><label>garmin_activities tab</label><input type="text" id="s-act" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
+    <div class="fg"><label>garmin_daily tab</label><input type="text" id="s-day" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
+    <div class="fg"><label>tp_fitness_history tab</label><input type="text" id="s-tph" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
+    <div class="fg"><label>tp_planned_workouts tab <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:0.9em">(optional if using iCal)</span></label><input type="text" id="s-tpp" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
+
+    <div class="ss">✍️ Apps Script <span style="color:var(--green);font-size:0.8em;font-weight:400;text-transform:none;letter-spacing:0"> — pre-configured ✅</span></div>
+    <div class="fg"><label>Apps Script Web App URL</label><input type="text" id="s-hook" placeholder="https://script.google.com/macros/s/.../exec"/><small>Pre-filled — handles both Whoop auth and fitness data write-back</small></div>
+
+    <button class="btn-launch" onclick="saveSetup()">🚀 Launch DEMAPP</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="sidebar">
+    <div class="logo"><h2><span>DEM</span>APP</h2><p>AI Triathlon Coach</p></div>
+    <nav class="nav">
+      <div class="ni active" onclick="go('briefing',this)"><span class="ic">🌅</span>Daily Briefing</div>
+      <div class="ni" onclick="go('chat',this)"><span class="ic">💬</span>Ask Coach</div>
+      <div class="ni" onclick="go('dashboard',this)"><span class="ic">📊</span>Dashboard</div>
+      <div class="ni" onclick="go('plan',this)"><span class="ic">🗓️</span>Training Plan</div>
+      <div class="ni" onclick="go('race',this)"><span class="ic">🏁</span>Race Peaking</div>
+      <div class="ni" id="nav-fit" onclick="go('fitness',this)"><span class="ic">✍️</span>Update Fitness</div>
+    </nav>
+    <div class="sfooter"><button class="btn-set" onclick="doReset()">⚙️ Settings</button></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h1 id="ptitle">Daily Briefing</h1>
+      <div class="tbr">
+        <span id="ws-top"></span>
+        <span id="ic-top" style="font-size:0.75rem"></span>
+        <span id="upd" style="font-size:0.75rem;color:var(--muted)"></span>
+        <button class="btn-ref" onclick="reload()">↻ Refresh</button>
+        <div class="dot" id="dot"></div>
+      </div>
+    </div>
+    <div class="content">
+      <div id="page-briefing"  class="page active"><div id="bc"><div class="loading"><div class="spin"></div>Loading…</div></div></div>
+      <div id="page-chat"      class="page">
+        <div class="cwrap">
+          <div class="cmsgs" id="cmsgs">
+            <div class="msg ai"><div class="av ai">🤖</div><div class="bub">Hey! I'm your DEMAPP coach. Connect Whoop via the button in the top bar, then ask me anything.</div></div>
+          </div>
+          <div class="chips">
+            <div class="chip" onclick="useChip(this)">Should I train hard today?</div>
+            <div class="chip" onclick="useChip(this)">How's my HRV trending?</div>
+            <div class="chip" onclick="useChip(this)">Am I following my plan?</div>
+            <div class="chip" onclick="useChip(this)">What's my biggest weakness?</div>
+            <div class="chip" onclick="useChip(this)">Modify tomorrow's workout given my recovery</div>
+            <div class="chip" onclick="useChip(this)">Analyze my last 4 weeks</div>
+          </div>
+          <div class="cia">
+            <textarea class="cin" id="cin" placeholder="Ask your DEMAPP coach…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <button class="btn-send" id="sbtn" onclick="sendChat()">Send</button>
+          </div>
+        </div>
+      </div>
+      <div id="page-dashboard" class="page"><div id="dc"><div class="loading"><div class="spin"></div>Loading…</div></div></div>
+      <div id="page-plan"      class="page"><div id="pc"><div class="loading"><div class="spin"></div>Loading…</div></div></div>
+      <div id="page-race"      class="page"><div id="rc"><div class="loading"><div class="spin"></div>Loading…</div></div></div>
+      <div id="page-fitness"   class="page"><div id="fc"><div class="loading"><div class="spin"></div>Loading…</div></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+var HOOK    = 'https://script.google.com/macros/s/AKfycbxx6pqI6OHiKqZhtwzXTHbTGuQ-piTp8W47YrysLERG7aYgHh_jf-KTM9L1m0du714Vfg/exec';
+var W_AUTH  = 'https://api.prod.whoop.com/oauth/oauth2/auth';
+var W_TOKEN = 'https://api.prod.whoop.com/oauth/oauth2/token';
+var W_REDIR = 'http://localhost';
+var W_SCOPE = 'read:recovery read:sleep read:workout read:cycles read:body_measurement';
+var W_API   = 'https://api.prod.whoop.com/developer/v1';
+var CLAUDE  = 'https://api.anthropic.com/v1/messages';
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+var C  = {};
+var D  = {whoop:null, acts:[], daily:[], tph:[], tpp:[], ical:[]};
+var CH = [];
+var IC = {ok:false, n:0};
+
+// ── SETUP ─────────────────────────────────────────────────────────────────────
+function gi(id){ return document.getElementById(id); }
+
+function saveSetup(){
+  C = {
+    key:  gi('s-key').value.trim(),
+    wid:  gi('s-wid').value.trim(),
+    wsec: gi('s-wsec').value.trim(),
+    ical: gi('s-ical').value.trim().replace('webcal://','https://'),
+    act:  gi('s-act').value.trim(),
+    day:  gi('s-day').value.trim(),
+    tph:  gi('s-tph').value.trim(),
+    tpp:  gi('s-tpp').value.trim(),
+    hook: gi('s-hook').value.trim() || HOOK
+  };
+  if(!C.key) { alert('Anthropic API key required.'); return; }
+  if(!C.wid) { alert('Whoop Client ID required.'); return; }
+  if(!C.wsec){ alert('Whoop Client Secret required.'); return; }
+  localStorage.setItem('demapp', JSON.stringify(C));
+  launch();
+}
+
+function loadC(){
+  var s = localStorage.getItem('demapp');
+  if(s){ C = JSON.parse(s); if(!C.hook) C.hook = HOOK; return true; }
+  return false;
+}
+
+function doReset(){ localStorage.removeItem('demapp'); location.reload(); }
+
+window.addEventListener('DOMContentLoaded', function(){
+  var el = gi('s-hook'); if(el) el.value = HOOK;
+});
+
+// ── LAUNCH ────────────────────────────────────────────────────────────────────
+async function launch(){
+  gi('setup').style.display = 'none';
+  gi('app').style.display   = 'block';
+  await reload();
+}
+
+async function reload(){
+  gi('dot').style.background = 'var(--orange)';
+  await Promise.allSettled([loadWhoop(), loadSheets(), loadICal()]);
+  gi('upd').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  gi('dot').style.background = 'var(--green)';
+  renderWhoopTop();
+  renderICalTop();
+  updateFitBadge();
+  renderPage();
+}
+
+// ── WHOOP OAUTH ───────────────────────────────────────────────────────────────
+function openWhoopModal(){
+  var state = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + 'xx';
+  localStorage.setItem('w_state', state);
+  var url = W_AUTH
+    + '?client_id='    + encodeURIComponent(C.wid)
+    + '&redirect_uri=' + encodeURIComponent(W_REDIR)
+    + '&response_type=code'
+    + '&scope='        + encodeURIComponent(W_SCOPE)
+    + '&state='        + state;
+  window.open(url, '_blank', 'width=520,height=720,noopener,noreferrer');
+  gi('m-url').value = '';
+  gi('m-status').textContent = '';
+  gi('m-status').style.color = 'var(--muted)';
+  gi('wmodal').classList.add('open');
+}
+
+function closeModal(){ gi('wmodal').classList.remove('open'); }
+
+async function submitCode(){
+  var raw = gi('m-url').value.trim();
+  var st  = gi('m-status');
+  if(!raw){ st.textContent = '⚠️ Paste the full URL first.'; return; }
+
+  var code = '';
+  try{
+    var qs = raw.includes('?') ? raw.split('?')[1] : raw;
+    code = new URLSearchParams(qs).get('code') || '';
+  }catch(e){}
+
+  if(!code){
+    st.textContent = '❌ No code found in that URL. Copy the entire address bar URL.';
+    st.style.color = 'var(--red)'; return;
+  }
+
+  st.textContent = '🔄 Connecting…'; st.style.color = 'var(--orange)';
+
+  // Build the token exchange body
+  var tokenBody = 'grant_type=authorization_code'
+    + '&code='          + encodeURIComponent(code)
+    + '&client_id='     + encodeURIComponent(C.wid)
+    + '&client_secret=' + encodeURIComponent(C.wsec)
+    + '&redirect_uri='  + encodeURIComponent(W_REDIR);
+
+  try{
+    // First try direct token exchange (works when served locally)
+    var r = await fetch(W_TOKEN, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body:    tokenBody
+    });
+    var d = await r.json();
+
+    // If CORS blocked, fall back to Apps Script proxy
+    if(!d.access_token && !d.error){
+      throw new Error('No response — trying proxy');
+    }
+
+    if(d.access_token){
+      storeWhoopToken(d);
+      st.textContent = '✅ Connected! Loading your data…'; st.style.color = 'var(--green)';
+      setTimeout(async function(){ closeModal(); await reload(); }, 900);
+      return;
+    }
+
+    // If error from Whoop, try proxy
+    throw new Error(d.error_description || d.error || 'Token error');
+
+  } catch(e){
+    // Fall back to Apps Script proxy
+    st.textContent = '🔄 Using secure proxy…'; st.style.color = 'var(--orange)';
+    try{
+      var pr = await fetch(C.hook || HOOK, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({type: 'whoop_token', body: tokenBody})
+      });
+      var pd = await pr.json();
+      if(pd.access_token){
+        storeWhoopToken(pd);
+        st.textContent = '✅ Connected! Loading your data…'; st.style.color = 'var(--green)';
+        setTimeout(async function(){ closeModal(); await reload(); }, 900);
+      } else {
+        st.textContent = '❌ ' + (pd.error_description || pd.error || JSON.stringify(pd));
+        st.style.color = 'var(--red)';
+      }
+    } catch(pe){
+      st.textContent = '❌ ' + pe.message;
+      st.style.color = 'var(--red)';
+    }
+  }
+}
+
+function storeWhoopToken(d){
+  localStorage.setItem('w_tok',     d.access_token);
+  localStorage.setItem('w_exp',     Date.now() + (d.expires_in||3600) * 1000);
+  localStorage.setItem('w_refresh', d.refresh_token || '');
+}
+
+function disconnectWhoop(){
+  ['w_tok','w_exp','w_refresh','w_state'].forEach(function(k){ localStorage.removeItem(k); });
+  D.whoop = null; renderWhoopTop(); renderPage();
+}
+
+function renderWhoopTop(){
+  var el  = gi('ws-top'); if(!el) return;
+  var tok = localStorage.getItem('w_tok');
+  var ok  = D.whoop && D.whoop.recovery && D.whoop.recovery.length > 0;
+  if(tok && ok){
+    el.innerHTML = '<span style="color:var(--green);font-size:0.75rem;cursor:pointer" onclick="disconnectWhoop()" title="Click to disconnect">💚 Whoop ✓</span>';
+  } else if(tok){
+    el.innerHTML = '<span style="color:var(--orange);font-size:0.75rem">💚 Connecting…</span>';
+  } else {
+    el.innerHTML = '<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.3rem 0.75rem;border-radius:6px;cursor:pointer;font-size:0.75rem;font-weight:700">💚 Connect Whoop</button>';
+  }
+}
+
+async function loadWhoop(){
+  var tok = localStorage.getItem('w_tok');
+  var exp = +(localStorage.getItem('w_exp') || 0);
+  if(tok && Date.now() > exp) tok = await refreshWhoop();
+  if(!tok){ D.whoop = null; return; }
+  try{
+    var h = {Authorization: 'Bearer ' + tok};
+    var rs = await Promise.all([
+      fetch(W_API + '/recovery?limit=7',       {headers:h}),
+      fetch(W_API + '/activity/sleep?limit=7', {headers:h}),
+      fetch(W_API + '/cycle?limit=7',          {headers:h})
+    ]);
+    if(rs[0].status === 401){
+      tok = await refreshWhoop();
+      if(!tok){ D.whoop = null; return; }
+      h  = {Authorization: 'Bearer ' + tok};
+      rs = await Promise.all([
+        fetch(W_API + '/recovery?limit=7',       {headers:h}),
+        fetch(W_API + '/activity/sleep?limit=7', {headers:h}),
+        fetch(W_API + '/cycle?limit=7',          {headers:h})
+      ]);
+    }
+    var ps = await Promise.all(rs.map(function(r){ return r.json(); }));
+    D.whoop = {recovery: ps[0].records||[], sleep: ps[1].records||[], cycle: ps[2].records||[]};
+  } catch(e){ console.warn('Whoop:', e); D.whoop = null; }
+}
+
+async function refreshWhoop(){
+  var ref = localStorage.getItem('w_refresh'); if(!ref) return null;
+  try{
+    var r = await fetch(W_TOKEN, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body:    'grant_type=refresh_token&refresh_token='+encodeURIComponent(ref)+'&client_id='+encodeURIComponent(C.wid)+'&client_secret='+encodeURIComponent(C.wsec)
+    });
+    var d = await r.json();
+    if(d.access_token){ storeWhoopToken(d); return d.access_token; }
+  } catch(e){}
+  return null;
+}
+
+// ── iCAL ──────────────────────────────────────────────────────────────────────
+async function loadICal(){
+  if(!C.ical){ IC = {ok:false,n:0}; return; }
+  try{
+    var r = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(C.ical));
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    D.ical = parseICal(await r.text());
+    IC = {ok:true, n:D.ical.length};
+  } catch(e){ IC = {ok:false,n:0}; D.ical = []; }
+}
+
+function parseICal(raw){
+  var ev = []; var blocks = raw.split('BEGIN:VEVENT'); blocks.shift();
+  for(var i = 0; i < blocks.length; i++){
+    var b = blocks[i];
+    var g = function(k){ var m = b.match(new RegExp(k+'(?:;[^:]*)?:([^\\r\\n]+)')); return m?m[1].trim():''; };
+    var sum = dec(g('SUMMARY')), dt = g('DTSTART'), dur = g('DURATION'), desc = dec(g('DESCRIPTION'));
+    if(!sum||!dt) continue;
+    var d = icalDt(dt); if(!d) continue;
+    ev.push({date:d.toISOString().split('T')[0],dateObj:d,workout_type:iType(sum,desc),title:sum,duration_minutes:iDur(dur),target_tss:0,intensity_zone:iZone(sum,desc),description:iClean(desc),completed:d<new Date()?'Yes':'No',source:'ical'});
+  }
+  return ev.sort(function(a,b){ return a.dateObj-b.dateObj; });
+}
+function dec(s){ return s.replace(/\\n/g,' ').replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\\\/g,'\\').replace(/<[^>]+>/g,'').trim(); }
+function icalDt(s){ try{ var c=s.replace(/[TZ]/g,'').replace(/[+-]\d{4}$/,''); return new Date(+c.slice(0,4),+c.slice(4,6)-1,+c.slice(6,8)); }catch(e){ return null; } }
+function iDur(s){ if(!s) return 0; var h=s.match(/(\d+)H/),m=s.match(/(\d+)M/); return(h?+h[1]*60:0)+(m?+m[1]:0); }
+function iType(t,d){ var s=(t+' '+d).toLowerCase(); if(/swim|pool|open.water/.test(s)) return'Swim'; if(/\bride\b|bike|cycl|velo|bici|zwift|ftp|watt/.test(s)) return'Ride'; if(/run|jog|track|tempo/.test(s)) return'Run'; if(/brick/.test(s)) return'Brick'; if(/strength|gym|lift|weight|fuerza/.test(s)) return'Strength'; if(/rest|recover|off|descanso/.test(s)) return'Rest'; return'Other'; }
+function iZone(t,d){ var s=t+' '+d; var m=s.match(/zone\s*([1-5](?:\s*[-\u2013]\s*[1-5])?)/i)||s.match(/\bz([1-5])\b/i); return m?'Zone '+m[1]:''; }
+function iClean(d){ return d.replace(/TSS[\s:]*\d+/gi,'').replace(/Zone\s*\d[-\u2013]?\d?/gi,'').replace(/\s{2,}/g,' ').trim().slice(0,120); }
+
+function renderICalTop(){
+  var el = gi('ic-top'); if(!el) return;
+  if(!C.ical){ el.textContent=''; return; }
+  el.innerHTML = IC.ok ? '<span style="color:var(--green)">📅 '+IC.n+' events</span>' : '<span style="color:var(--red)">📅 iCal error</span>';
+}
+function getPlanned(){ if(D.ical.length>0) return D.ical; if(D.tpp.length>0) return D.tpp.map(function(w){ return Object.assign({},w,{source:'sheet'}); }); return []; }
+
+// ── STALE ─────────────────────────────────────────────────────────────────────
+function daysStale(){ if(!D.tph.length) return 999; try{ return Math.floor((new Date()-new Date(D.tph[0].date))/864e5); }catch(e){ return 999; } }
+function staleBanner(){ var d=daysStale(); if(d<7) return ''; return '<div class="stale"><div><strong>📊 Fitness data is '+d+' days old</strong><p>Update your CTL, ATL and TSB from TrainingPeaks.</p></div><button class="btn-or" onclick="go(\'fitness\',gi(\'nav-fit\'))">Update Now →</button></div>'; }
+function updateFitBadge(){ var el=gi('nav-fit'); if(!el) return; var b=daysStale()>=7?' <span style="background:var(--orange);color:white;font-size:0.6rem;font-weight:700;padding:0.1rem 0.4rem;border-radius:10px;margin-left:auto">!</span>':''; el.innerHTML='<span class="ic">✍️</span>Update Fitness'+b; }
+
+// ── SHEETS WRITE ──────────────────────────────────────────────────────────────
+async function writeRow(row){
+  try{
+    await fetch(C.hook||HOOK, {method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({row:row})});
+    return {ok:true};
+  } catch(e){ return {ok:false,error:e.message}; }
+}
+
+// ── SHEETS READ ───────────────────────────────────────────────────────────────
+async function loadSheets(){
+  var t = [];
+  if(C.act) t.push(csv(C.act).then(function(r){ D.acts=r; }));
+  if(C.day) t.push(csv(C.day).then(function(r){ D.daily=r; }));
+  if(C.tph) t.push(csv(C.tph).then(function(r){ D.tph=r; }));
+  if(C.tpp) t.push(csv(C.tpp).then(function(r){ D.tpp=r; }));
+  await Promise.allSettled(t);
+}
+async function csv(url){ try{ var r=await fetch(url); return parseCSV(await r.text()); }catch(e){ console.warn('CSV:',e.message); return []; } }
+function parseCSV(txt){ var lines=txt.trim().split('\n'); if(lines.length<2) return []; var hdr=lines[0].split(',').map(function(h){ return h.trim().replace(/"/g,''); }); return lines.slice(1).map(function(l){ var v=l.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)||[]; var o={}; hdr.forEach(function(h,i){ o[h]=(v[i]||'').replace(/"/g,'').trim(); }); return o; }).filter(function(r){ return r[hdr[0]]; }); }
+
+// ── RENDER ROUTER ─────────────────────────────────────────────────────────────
+function renderPage(){ var a=document.querySelector('.page.active'); if(!a) return; var id=a.id.replace('page-',''); if(id==='briefing') renderBriefing(); if(id==='dashboard') renderDashboard(); if(id==='plan') renderPlan(); if(id==='race') renderRace(); if(id==='fitness') renderFitness(); }
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function wCTA(){ return '<div class="wcta"><div><h3>💚 Connect your Whoop</h3><p>See your real recovery, HRV, and sleep data.</p></div><button class="btn-wc" onclick="openWhoopModal()">Connect →</button></div>'; }
+function ws(){ return D.whoop&&D.whoop.recovery&&D.whoop.recovery[0]&&D.whoop.recovery[0].score ? D.whoop.recovery[0].score : null; }
+function wsl(){ return D.whoop&&D.whoop.sleep&&D.whoop.sleep[0]&&D.whoop.sleep[0].score ? D.whoop.sleep[0].score : null; }
+function wcy(){ return D.whoop&&D.whoop.cycle&&D.whoop.cycle[0]&&D.whoop.cycle[0].score ? D.whoop.cycle[0].score : null; }
+function em(t){ var m={Run:'🏃',Ride:'🚴',Bike:'🚴',Swim:'🏊',Strength:'💪',Rest:'😴',Brick:'🔥',Walk:'🚶',Other:'🏋️'}; return m[t]||'🏋️'; }
+
+// ── BRIEFING ──────────────────────────────────────────────────────────────────
+async function renderBriefing(){
+  var el=gi('bc');
+  var s=ws(), sl=wsl(), cy=wcy(), hw=!!s;
+  var rec=hw?s.recovery_score:null, hrv=hw?Math.round(s.hrv_rmssd_milli||0):null, rhr=hw?Math.round(s.resting_heart_rate||0):null;
+  var sp=sl?Math.round(sl.sleep_performance_percentage||0):null;
+  var sh=sl&&sl.stage_summary?((sl.stage_summary.total_in_bed_time_milli||0)/3.6e9).toFixed(1):null;
+  var strain=cy?(cy.strain||0).toFixed(1):null;
+  var tp=D.tph[0]||{}, ctl=tp.ctl||'—', atl=tp.atl||'—', tsb=tp.tsb||'—';
+  var tsbn=parseInt(tsb), tc=isNaN(tsbn)?'cp':tsbn>5?'cg':tsbn<-15?'cr':'co';
+  var tl=isNaN(tsbn)?'Enter data in Update Fitness':tsbn>5?'Fresh / Race ready':tsbn<-15?'Fatigued — reduce load':'Normal training load';
+  var pl=getPlanned(), now=new Date().toDateString();
+  var tw=pl.filter(function(x){ try{ return new Date(x.date).toDateString()===now; }catch(e){ return false; } });
+  var iB=IC.ok?'<div class="ab ag">📅 iCal: '+IC.n+' workouts from TrainingPeaks</div>':C.ical?'<div class="ab ar">⚠️ iCal could not load — check your URL in Settings</div>':'';
+  var heroHtml=hw?(function(){var col=rec>=67?'rg':rec>=34?'ro':'rr';var lb=rec>=67?'🟢 Green — Ready to Perform':rec>=34?'🟡 Yellow — Train with Caution':'🔴 Red — Rest or Easy Only';return'<div class="hero"><div class="circle '+col+'">'+rec+'</div><div class="hi"><h2>Recovery Score</h2><p>'+lb+'</p><p style="margin-top:0.5rem">HRV: <strong>'+hrv+'ms</strong> &nbsp;·&nbsp; RHR: <strong>'+rhr+'bpm</strong> &nbsp;·&nbsp; Sleep: <strong>'+sh+'h ('+sp+'%)</strong></p></div></div>';})():wCTA();
+  var tH='';
+  if(tw.length){ var src=IC.ok?'<span class="spill spi">iCal</span>':'<span class="spill sps">sheet</span>'; tH='<div class="card" style="margin-bottom:1.5rem"><div class="ctitle">📅 Today\'s Workout &nbsp;'+src+'</div>'+tw.map(function(wk){ return'<div style="display:flex;align-items:flex-start;gap:1rem;padding:0.85rem;background:var(--surface2);border-radius:8px;margin-bottom:0.5rem"><span style="font-size:1.4rem;margin-top:0.1rem">'+em(wk.workout_type)+'</span><div><div style="font-weight:600">'+wk.title+'</div><div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">'+(wk.duration_minutes>0?wk.duration_minutes+'min':'')+(wk.intensity_zone?' · '+wk.intensity_zone:'')+'</div>'+(wk.description?'<div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem;font-style:italic">'+wk.description+'</div>':'')+'</div></div>'; }).join('')+'</div>'; }
+  el.innerHTML='<p style="color:var(--muted);font-size:0.82rem;margin-bottom:0.75rem">'+new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</p>'+staleBanner()+iB+heroHtml+'<div class="g3"><div class="mc"><div class="ml">CTL — Fitness</div><div class="mv cb">'+ctl+'</div><div class="msb">Chronic Training Load</div></div><div class="mc"><div class="ml">ATL — Fatigue</div><div class="mv co">'+atl+'</div><div class="msb">Acute Training Load</div></div><div class="mc"><div class="ml">TSB — Form</div><div class="mv '+tc+'">'+tsb+'</div><div class="msb">'+tl+'</div></div></div>'+tH+'<div class="aibox"><div class="aih"><span class="aibadge">DEMAPP Coach</span><span style="font-size:0.8rem;color:var(--muted)">Daily Analysis</span></div><div class="ait" id="ait"><div class="loading"><div class="spin"></div>Analyzing…</div></div></div>';
+  genBriefing(rec,hrv,rhr,sh,sp,strain,ctl,atl,tsb,tw,hw);
+}
+
+async function genBriefing(rec,hrv,rhr,sh,sp,strain,ctl,atl,tsb,tw,hw){
+  var acts=D.acts.slice(0,5).map(function(a){ return a.date+': '+a.activity_type+' '+a.duration_minutes+'min TSS:'+a.tss; }).join('\n');
+  var tStr=tw.length?tw.map(function(w){ return w.title+' ('+w.duration_minutes+'min'+(w.intensity_zone?', '+w.intensity_zone:'')+')'; }).join(', '):'None planned';
+  var wStr=hw?'Recovery '+rec+'/100 | HRV '+hrv+'ms | RHR '+rhr+'bpm | Sleep '+sh+'h ('+sp+'%) | Strain '+strain:'Whoop not connected';
+  var t=await ask('You are an expert triathlon coach AI for DEMAPP.\nWHOOP: '+wStr+'\nLOAD: CTL '+ctl+' | ATL '+atl+' | TSB '+tsb+"\nTODAY'S WORKOUT: "+tStr+'\nRECENT ACTIVITIES:\n'+acts+'\nWrite a daily briefing in 3-4 short paragraphs:\n1. Readiness assessment and what it means for today\n2. Whether to proceed/modify/skip today\'s workout with specific recommendation\n3. One focused coaching insight for today\n4. One sentence on the bigger picture training trend\nBe direct, use actual numbers, keep under 200 words.');
+  var el=gi('ait'); if(el) el.innerHTML=t.split('\n\n').filter(Boolean).map(function(p){ return'<p>'+p+'</p>'; }).join('');
+}
+
+// ── FITNESS ───────────────────────────────────────────────────────────────────
+function renderFitness(){
+  var el=gi('fc'), d=daysStale(), last=D.tph[0]||{}, today=new Date().toISOString().split('T')[0];
+  var sh=d>=7?'<div class="stale"><div><strong>📊 Fitness data is '+d+' days old</strong><p>Fill in this week\'s numbers from TrainingPeaks.</p></div></div>':'';
+  var rows=D.tph.slice(0,8).map(function(r,i){ var tc=+r.tsb>5?'var(--green)':+r.tsb<-15?'var(--red)':'var(--orange)'; return'<tr style="border-top:1px solid var(--border);background:'+(i%2?'rgba(255,255,255,0.02)':'transparent')+'"><td style="padding:0.6rem 0.75rem">'+(r.date||'—')+'</td><td style="padding:0.6rem 0.75rem;color:var(--blue);font-weight:600">'+(r.ctl||'—')+'</td><td style="padding:0.6rem 0.75rem;color:var(--orange);font-weight:600">'+(r.atl||'—')+'</td><td style="padding:0.6rem 0.75rem;font-weight:600;color:'+tc+'">'+(r.tsb||'—')+'</td><td style="padding:0.6rem 0.75rem">'+(r.weekly_tss||'—')+'</td><td style="padding:0.6rem 0.75rem;color:var(--muted);font-style:italic">'+(r.notes||'')+'</td></tr>'; }).join('');
+  el.innerHTML=sh+'<div class="eform"><h3>📈 Weekly Fitness Update</h3><p class="esub">Open TrainingPeaks → Performance Management Chart → copy today\'s values. Takes 2 minutes.</p><div class="erow"><label>Week of</label><input type="date" id="ef-d" value="'+today+'"/></div><div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:0.6rem">Training Load — from Performance Management Chart</div><div class="e4"><div class="ef"><label>CTL</label><input type="number" id="ef-ctl" placeholder="'+(last.ctl||'82')+'" step="0.1"/></div><div class="ef"><label>ATL</label><input type="number" id="ef-atl" placeholder="'+(last.atl||'91')+'" step="0.1"/></div><div class="ef"><label>TSB</label><input type="number" id="ef-tsb" placeholder="'+(last.tsb||'-9')+'" step="0.1"/></div><div class="ef"><label>Weekly TSS</label><input type="number" id="ef-tss" placeholder="'+(last.weekly_tss||'420')+'"/></div></div><div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:0.6rem">TSS by Sport — optional</div><div class="e3"><div class="ef"><label>🏃 Run</label><input type="number" id="ef-run" placeholder="'+(last.weekly_run_tss||'')+'"/></div><div class="ef"><label>🚴 Bike</label><input type="number" id="ef-bike" placeholder="'+(last.weekly_bike_tss||'')+'"/></div><div class="ef"><label>🏊 Swim</label><input type="number" id="ef-swim" placeholder="'+(last.weekly_swim_tss||'')+'"/></div></div><div class="ef" style="margin-bottom:1rem"><label>Notes</label><input type="text" id="ef-notes" placeholder="e.g. Race build week 9" style="text-align:left;font-weight:400"/></div><div class="eact"><button class="btn-save" id="ef-btn" onclick="saveFit()">💾 Save to Google Sheet</button><span class="est" id="ef-st"></span></div><p style="font-size:0.73rem;color:var(--muted);margin-top:0.75rem">💡 After saving, check your Google Sheet to confirm the new row appeared.</p></div>'+(rows?'<div class="card"><div class="ctitle">📋 Recent Entries</div><table style="width:100%;border-collapse:collapse;font-size:0.82rem"><thead><tr style="color:var(--muted);text-align:left">'+['Date','CTL','ATL','TSB','Weekly TSS','Notes'].map(function(h){ return'<th style="padding:0.5rem 0.75rem;font-weight:600">'+h+'</th>'; }).join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>':'');
+}
+
+async function saveFit(){
+  var btn=gi('ef-btn'),st=gi('ef-st');
+  var date=gi('ef-d').value,ctl=gi('ef-ctl').value,atl=gi('ef-atl').value,tsb=gi('ef-tsb').value,tss=gi('ef-tss').value,run=gi('ef-run').value,bike=gi('ef-bike').value,swim=gi('ef-swim').value,notes=gi('ef-notes').value;
+  if(!date||!ctl||!atl||!tsb){ st.textContent='⚠️ Date, CTL, ATL and TSB required.'; st.className='est err'; return; }
+  btn.disabled=true; btn.textContent='Saving…'; st.textContent=''; st.className='est';
+  var res=await writeRow([date,ctl,atl,tsb,tss,run,bike,swim,'','',notes]);
+  if(res.ok){ st.textContent='✅ Sent! Check your Sheet to confirm.'; st.className='est ok'; btn.textContent='💾 Save to Google Sheet'; btn.disabled=false; setTimeout(async function(){ await loadSheets(); renderFitness(); },3000); }
+  else{ st.textContent='❌ '+res.error; st.className='est err'; btn.textContent='💾 Save to Google Sheet'; btn.disabled=false; }
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function renderDashboard(){
+  var el=gi('dc'), w=D.whoop, hw=!!(w&&w.recovery&&w.recovery.length>0);
+  var rd=hw?w.recovery.slice(0,7).reverse():[], lbl=rd.map(function(r){ return new Date(r.created_at).toLocaleDateString('en-US',{weekday:'short'}); }), rsc=rd.map(function(r){ return(r.score&&r.score.recovery_score)||0; }), hrv=rd.map(function(r){ return Math.round((r.score&&r.score.hrv_rmssd_milli)||0); });
+  var tph=D.tph.slice(0,8).reverse(), tpL=tph.map(function(r){ return r.date?new Date(r.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''; });
+  var co={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#2e3250'},ticks:{color:'#64748b',font:{size:11}}},y:{grid:{color:'#2e3250'},ticks:{color:'#64748b',font:{size:11}}}}};
+  var pl=getPlanned(), n=new Date(), w7=new Date(); w7.setDate(w7.getDate()+7);
+  var wkT=pl.filter(function(x){ try{ var d=new Date(x.date); return d>=n&&d<=w7; }catch(e){ return false; } }).reduce(function(s,x){ return s+(+x.target_tss||0); },0);
+  var s=ws(), r0=s?s.recovery_score:null, h0=s?Math.round(s.hrv_rmssd_milli||0):null;
+  var rc=r0!==null?(r0>=67?'cg':r0>=34?'co':'cr'):'cp';
+  el.innerHTML=(!hw?wCTA():'')+
+    '<div class="g3" style="margin-bottom:1.5rem">'+
+    '<div class="mc"><div class="ml">Today\'s Recovery</div><div class="mv '+rc+'">'+(r0!==null?r0:'—')+'</div><div class="msb">'+(hw?'Whoop / 100':'<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.2rem 0.5rem;border-radius:4px;cursor:pointer;font-size:0.7rem">Connect</button>')+'</div></div>'+
+    '<div class="mc"><div class="ml">Today\'s HRV</div><div class="mv cp">'+(h0!==null?h0+'ms':'—')+'</div><div class="msb">Heart rate variability</div></div>'+
+    '<div class="mc"><div class="ml">Next 7 Days TSS</div><div class="mv co">'+wkT+'</div><div class="msb">'+(IC.ok?'Live from iCal':'From sheet')+'</div></div>'+
+    '</div>'+
+    '<div class="g2">'+
+    '<div class="card"><div class="ctitle">💚 Recovery Score — 7 Days</div><div class="cw"><canvas id="cr"></canvas></div></div>'+
+    '<div class="card"><div class="ctitle">❤️ HRV Trend — 7 Days</div><div class="cw"><canvas id="ch"></canvas></div></div>'+
+    '</div>'+
+    '<div class="card"><div class="ctitle">📈 CTL / ATL / TSB — Training Load History</div><div class="cw" style="height:260px"><canvas id="cl"></canvas></div></div>'+
+    '<div class="card"><div class="ctitle">🏃 Recent Activities — TSS</div><div class="cw"><canvas id="ca"></canvas></div></div>';
+  setTimeout(function(){
+    if(lbl.length>0){
+      new Chart(gi('cr'),{type:'bar',data:{labels:lbl,datasets:[{data:rsc,backgroundColor:rsc.map(function(s){ return s>=67?'rgba(16,185,129,0.75)':s>=34?'rgba(245,158,11,0.75)':'rgba(239,68,68,0.75)'; }),borderRadius:6}]},options:Object.assign({},co,{scales:Object.assign({},co.scales,{y:Object.assign({},co.scales.y,{min:0,max:100})})})});
+      new Chart(gi('ch'),{type:'line',data:{labels:lbl,datasets:[{data:hrv,borderColor:'#6c63ff',backgroundColor:'rgba(108,99,255,0.1)',tension:0.4,fill:true,pointBackgroundColor:'#6c63ff',pointRadius:4}]},options:co});
+    }
+    if(tph.length>0){
+      new Chart(gi('cl'),{type:'line',data:{labels:tpL,datasets:[{label:'CTL',data:tph.map(function(r){ return+r.ctl||0; }),borderColor:'#3b82f6',tension:0.4,fill:false,pointRadius:3},{label:'ATL',data:tph.map(function(r){ return+r.atl||0; }),borderColor:'#f59e0b',tension:0.4,fill:false,pointRadius:3},{label:'TSB',data:tph.map(function(r){ return+r.tsb||0; }),borderColor:'#10b981',tension:0.4,fill:false,pointRadius:3}]},options:Object.assign({},co,{plugins:{legend:{display:true,labels:{color:'#94a3b8',font:{size:11}}}}})});
+    }
+    var acts=D.acts.slice(0,10).reverse();
+    if(acts.length>0){
+      var COLS={Run:'rgba(59,130,246,0.75)',Ride:'rgba(16,185,129,0.75)',Swim:'rgba(245,158,11,0.75)',Strength:'rgba(108,99,255,0.75)'};
+      new Chart(gi('ca'),{type:'bar',data:{labels:acts.map(function(a){ return a.activity_type+' '+(a.date||'').slice(5); }),datasets:[{data:acts.map(function(a){ return+a.tss||0; }),backgroundColor:acts.map(function(a){ return COLS[a.activity_type]||'rgba(100,116,139,0.7)'; }),borderRadius:6}]},options:co});
+    }
+  },100);
+}
+
+// ── PLAN ──────────────────────────────────────────────────────────────────────
+function renderPlan(){
+  var el=gi('pc'), today=new Date(), pl=getPlanned();
+  var up=pl.filter(function(x){ try{ return new Date(x.date)>=today||new Date(x.date).toDateString()===today.toDateString(); }catch(e){ return false; } }).slice(0,21);
+  if(!up.length){ el.innerHTML='<div class="card"><p style="color:var(--muted)">No planned workouts found. Add your TrainingPeaks iCal URL in Settings.</p></div>'; return; }
+  var wkT=up.slice(0,7).reduce(function(s,x){ return s+(+x.target_tss||0); },0), done=up.filter(function(x){ return x.completed==='Yes'; }).length;
+  var aH=IC.ok?'<div class="ab ag">✅ Live from TrainingPeaks iCal — '+IC.n+' events</div>':C.ical?'<div class="ab ar">⚠️ iCal failed to load</div>':'<div class="ab ay">ℹ️ Add your TrainingPeaks iCal URL in Settings for live sync.</div>';
+  var sP=IC.ok?'<span class="spill spi">iCal live</span>':'<span class="spill sps">sheet</span>';
+  var items=up.map(function(wk){ var d=new Date(wk.date),isT=d.toDateString()===today.toDateString(),isPast=d<today&&!isT; return'<div class="wi wi-'+(wk.workout_type||'Other')+'" style="'+(isPast?'opacity:0.45;':'')+(isT?'background:rgba(108,99,255,0.07);':'')+'"><div class="we">'+em(wk.workout_type)+'</div><div class="winfo"><div class="wt">'+(isT?'⭐ TODAY — ':'')+wk.title+'</div><div class="wm">'+d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+(+wk.duration_minutes>0?' · '+wk.duration_minutes+'min':'')+(wk.intensity_zone?' · '+wk.intensity_zone:'')+(wk.description?' · <em>'+wk.description.slice(0,80)+'</em>':'')+'</div></div>'+(+wk.target_tss>0?'<div class="tpill">TSS '+wk.target_tss+'</div>':'')+(wk.completed==='Yes'?'<div style="color:var(--green);font-size:1.2rem;margin-left:0.25rem">✓</div>':'')+'</div>'; }).join('');
+  el.innerHTML=aH+'<div class="g3" style="margin-bottom:1.5rem"><div class="mc"><div class="ml">Upcoming</div><div class="mv cb">'+up.length+'</div><div class="msb">Next 3 weeks</div></div><div class="mc"><div class="ml">Next 7 Days TSS</div><div class="mv co">'+wkT+'</div><div class="msb">Planned load</div></div><div class="mc"><div class="ml">Completed</div><div class="mv cg">'+done+'</div><div class="msb">Of '+up.length+'</div></div></div><div class="card"><div class="ctitle">🗓️ Training Plan &nbsp;'+sP+'</div><div class="wlist">'+items+'</div></div>';
+}
+
+// ── RACE ──────────────────────────────────────────────────────────────────────
+function renderRace(){
+  var el=gi('rc'), s=JSON.parse(localStorage.getItem('demapp_race')||'{}'), rD=s.date||'', rN=s.name||'';
+  var days=rD?Math.ceil((new Date(rD)-new Date())/864e5):null;
+  var pl=getPlanned(), n=new Date(), w7=new Date(); w7.setDate(w7.getDate()+7);
+  var up7=pl.filter(function(x){ try{ var d=new Date(x.date); return d>=n&&d<=w7; }catch(e){ return false; } });
+  var rH=days!==null?(function(){ var ph=days<=14?'🏁 Taper time!':days<=28?'🔥 Final build phase':days<=56?'💪 Build phase':'🌱 Base building'; return'<div class="rbanner"><div><div style="font-size:0.75rem;color:var(--muted)">Days to race</div><div class="rdays">'+days+'</div><div style="font-size:0.75rem;color:var(--muted)">days</div></div><div style="text-align:right"><div style="font-size:1rem;font-weight:700">'+rN+'</div><div style="color:var(--muted);font-size:0.82rem">'+new Date(rD).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</div><div style="margin-top:0.5rem;font-size:0.82rem;color:var(--muted)">'+ph+'</div></div></div><div class="aibox"><div class="aih"><span class="aibadge">DEMAPP Coach</span><span style="font-size:0.8rem;color:var(--muted)">Race Peaking Analysis</span></div><div class="ait" id="rai"><div class="loading"><div class="spin"></div>Analyzing…</div></div></div>'; })():'<div class="card"><p style="color:var(--muted)">Enter your race date above to get taper and peaking guidance.</p></div>';
+  el.innerHTML='<div class="card"><div class="ctitle">🏁 Your A-Race</div><div class="rrow"><input type="text" id="r-n" placeholder="Race name e.g. Ironman Mallorca" value="'+rN+'" style="flex:1"/><input type="date" id="r-d" value="'+rD+'"/><button class="bsm" onclick="saveRace()">Save</button></div></div>'+rH;
+  if(days!==null) genRace(rN,rD,days,up7);
+}
+function saveRace(){ localStorage.setItem('demapp_race',JSON.stringify({date:gi('r-d').value,name:gi('r-n').value})); renderRace(); }
+async function genRace(name,date,days,up7){
+  var tp=D.tph[0]||{}, s=ws()||{};
+  var acts=D.acts.slice(0,7).map(function(a){ return a.date+' '+a.activity_type+' '+a.duration_minutes+'min TSS:'+a.tss; }).join('\n');
+  var upS=up7.map(function(wk){ return wk.date+' '+wk.workout_type+' "'+wk.title+'" '+wk.duration_minutes+'min'; }).join('\n')||'No upcoming data';
+  var t=await ask('You are an expert triathlon coach for DEMAPP.\nRACE: '+name+' | Date: '+date+' | Days away: '+days+'\nFITNESS: CTL '+(tp.ctl||'?')+' | ATL '+(tp.atl||'?')+' | TSB '+(tp.tsb||'?')+'\nWHOOP: Recovery '+(s.recovery_score||'N/A')+'/100 | HRV '+Math.round(s.hrv_rmssd_milli||0)+'ms\nRECENT TRAINING:\n'+acts+'\nNEXT 7 DAYS:\n'+upS+'\nProvide: (1) fitness assessment — on track?, (2) taper timing and load reduction, (3) target TSB for race day, (4) 2-3 key sessions to prioritize, (5) one risk to watch. Specific numbers and dates. Under 260 words.');
+  var el=gi('rai'); if(el) el.innerHTML=t.split('\n\n').filter(Boolean).map(function(p){ return'<p>'+p+'</p>'; }).join('');
+}
+
+// ── CHAT ──────────────────────────────────────────────────────────────────────
+async function sendChat(){
+  var inp=gi('cin'), msg=inp.value.trim(); if(!msg) return;
+  inp.value=''; addMsg('user',msg); gi('sbtn').disabled=true;
+  CH.push({role:'user',content:buildCtx()+'\n\nATHLETE: '+msg});
+  var th=addMsg('ai','<div class="loading"><div class="spin"></div>Thinking…</div>');
+  var rep=await askChat(CH);
+  th.querySelector('.bub').innerHTML=rep.replace(/\n/g,'<br>');
+  CH.push({role:'assistant',content:rep});
+  gi('sbtn').disabled=false; gi('cmsgs').scrollTop=1e9;
+}
+function useChip(el){ gi('cin').value=el.textContent; sendChat(); }
+function addMsg(role,html){ var w=gi('cmsgs'),d=document.createElement('div');d.className='msg '+role;d.innerHTML='<div class="av '+role+'">'+(role==='ai'?'🤖':'👤')+'</div><div class="bub">'+html+'</div>';w.appendChild(d);w.scrollTop=1e9;return d; }
+function buildCtx(){
+  var s=ws()||{}, tp=D.tph[0]||{}, race=JSON.parse(localStorage.getItem('demapp_race')||'{}');
+  var pl=getPlanned(), up5=pl.filter(function(x){ try{ return new Date(x.date)>=new Date(); }catch(e){ return false; } }).slice(0,5);
+  return'You are an expert triathlon coach for DEMAPP. Use the athlete\'s actual data.\nWHOOP: Recovery '+(s.recovery_score||'N/A')+'/100 | HRV '+Math.round(s.hrv_rmssd_milli||0)+'ms | RHR '+Math.round(s.resting_heart_rate||0)+'bpm\nLOAD: CTL '+(tp.ctl||'?')+' | ATL '+(tp.atl||'?')+' | TSB '+(tp.tsb||'?')+'\nRECENT: '+D.acts.slice(0,5).map(function(a){ return a.date+' '+a.activity_type+' '+a.duration_minutes+'min TSS:'+a.tss; }).join(', ')+'\nUPCOMING ('+(IC.ok?'iCal live':'sheet')+'): '+up5.map(function(wk){ return wk.date+' '+wk.workout_type+' "'+wk.title+'" '+wk.duration_minutes+'min'; }).join(' | ')+(race.date?'\nRACE: '+race.name+' on '+race.date+' ('+Math.ceil((new Date(race.date)-new Date())/864e5)+' days away)':'');
+}
+
+// ── CLAUDE ────────────────────────────────────────────────────────────────────
+async function ask(p){ try{ var r=await fetch(CLAUDE,{method:'POST',headers:{'Content-Type':'application/json','x-api-key':C.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:p}]})}); var d=await r.json(); return(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate.'; }catch(e){ return'Error connecting to Claude API.'; } }
+async function askChat(msgs){ try{ var r=await fetch(CLAUDE,{method:'POST',headers:{'Content-Type':'application/json','x-api-key':C.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:msgs.slice(-10)})}); var d=await r.json(); return(d.content&&d.content[0]&&d.content[0].text)||'Unable to respond.'; }catch(e){ return'Error connecting to Claude API.'; } }
+
+// ── NAV ───────────────────────────────────────────────────────────────────────
+var PT={briefing:'Daily Briefing',chat:'Ask Coach',dashboard:'Dashboard',plan:'Training Plan',race:'Race Peaking',fitness:'Update Fitness'};
+function go(id,el){ document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); }); document.querySelectorAll('.ni').forEach(function(n){ n.classList.remove('active'); }); gi('page-'+id).classList.add('active'); if(el)el.classList.add('active'); gi('ptitle').textContent=PT[id]; renderPage(); }
+
+if(loadC()) launch();
+</script>
+</body>
+</html>
