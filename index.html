@@ -268,6 +268,8 @@ body::before{
 <div id="settings-modal">
   <div class="settings-card">
     <h2>Configurações</h2>
+    <div class="s-sec">Claude AI</div>
+    <div class="sfg"><label>Anthropic API Key</label><input type="password" id="cfg-key" placeholder="sk-ant-api03-..."/><small style="font-family:var(--font-mono);font-size:0.62rem;color:var(--muted);margin-top:0.2rem;display:block">console.anthropic.com → API Keys</small></div>
     <div class="s-sec">TrainingPeaks iCal</div>
     <div class="sfg"><label>iCal URL</label><input type="text" id="cfg-ical" placeholder="https://www.trainingpeaks.com/ical/..."/></div>
     <div class="s-sec">Google Sheets CSV — Fitness</div>
@@ -353,7 +355,7 @@ body::before{
 // ── HARDCODED CREDENTIALS ──────────────────────────────────────────────────────
 var PROXY       = 'https://whoop-proxy.luiz-m-mota.workers.dev';
 var HOOK        = 'https://script.google.com/macros/s/AKfycbydZsJTUgCgUsl3_wwI99_7DgQwNWFiEt2vtrrVFe9tbuj3UKFYDeXmUzq8bFRHC_KXUg/exec';
-var CLAUDE_KEY  = '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';
+var CLAUDE_KEY  = localStorage.getItem('claude_key') || '';
 var WHOOP_CID   = '90aa056f-a01c-49f1-9c61-7b1e22b02634';
 var WHOOP_CSEC  = '4e07dc52a6a5be5d0e4e09b1e172fba309fe1b4eda578b72a68cf60d6f78742d';
 var STRAVA_CID  = '214333';
@@ -384,6 +386,13 @@ function saveCFG(){ localStorage.setItem('demapp_cfg',JSON.stringify(CFG)); }
 window.addEventListener('DOMContentLoaded', function(){
   loadCFG();
   gi('app').style.display = 'block';
+  if(!localStorage.getItem('claude_key')){
+    setTimeout(function(){
+      if(confirm('Chave da API do Claude nao configurada.\nClique OK para abrir as configuracoes e adicionar sua chave (console.anthropic.com → API Keys).')){
+        openSettings();
+      }
+    }, 500);
+  }
   reload();
   populateSettings();
 });
@@ -1111,6 +1120,7 @@ async function askChat(msgs){
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 function populateSettings(){
+  if(gi('cfg-key'))  gi('cfg-key').value=localStorage.getItem('claude_key')||'';
   if(gi('cfg-ical')) gi('cfg-ical').value=CFG.ical||'';
   if(gi('cfg-tph'))  gi('cfg-tph').value=CFG.tph||'';
   if(gi('cfg-tpp'))  gi('cfg-tpp').value=CFG.tpp||'';
@@ -1121,6 +1131,7 @@ function openSettings(){
   gi('settings-modal').classList.add('open');
 }
 function saveSettings(){
+  var key = gi('cfg-key').value.trim(); if(key) localStorage.setItem('claude_key', key);
   CFG.ical = gi('cfg-ical').value.trim().replace('webcal://','https://');
   CFG.tph  = gi('cfg-tph').value.trim();
   CFG.tpp  = gi('cfg-tpp').value.trim();
