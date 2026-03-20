@@ -475,30 +475,42 @@ async function loadWhoop(){
   if(tok && Date.now()>exp) tok = await refreshWhoop();
   if(!tok){ D.cycles=[]; D.recoveries=[]; D.sleeps=[]; return; }
   try{
-    // ── Ciclos: pega 10, ciclo[0] = HOJE (sem recovery ainda), ciclo[1+] = completos
+    // ── Ciclos (strain de hoje = ciclo[0])
     var cd = await wGet('/cycle?limit=10', tok);
     D.cycles = cd.records || cd.cycle_collection || [];
-    console.log('Whoop ciclos:', D.cycles.length, '| strain hoje:', D.cycles[0]&&D.cycles[0].score?D.cycles[0].score.strain:'n/a');
+    console.log('Ciclos:', D.cycles.length, '| strain:', D.cycles[0]&&D.cycles[0].score?D.cycles[0].score.strain:'n/a');
 
-    // ── Recovery: pula ciclo[0] (hoje), busca do ciclo[1] em diante
+    // ── Recovery: tenta endpoint direto primeiro
     D.recoveries = [];
-    for(var i=1; i<D.cycles.length; i++){
-      var rec = await wGet('/cycle/'+D.cycles[i].id+'/recovery', tok);
-      if(rec && rec.score && rec.score.recovery_score != null){
-        rec._cycleStart = D.cycles[i].start;
-        D.recoveries.push(rec);
-        console.log('Recovery ciclo',D.cycles[i].id,':', rec.score.recovery_score+'% HRV:'+Math.round(rec.score.hrv_rmssd_milli||0)+'ms');
-        if(D.recoveries.length >= 7) break;
-      }
+    var endpoints = [
+      '/recovery?limit=7',
+      '/v1/recovery?limit=7',
+      '/recovery?limit=10&start=' + encodeURIComponent(new Date(Date.now()-7*864e5).toISOString())
+    ];
+    for(var ei=0; ei<endpoints.length; ei++){
+      var rd = await wGet(endpoints[ei], tok);
+      var raw = JSON.stringify(rd);
+      console.log('Recovery endpoint', endpoints[ei], ':', raw.slice(0,200));
+      var recArr = rd.records || rd.recovery_collection || rd.data || (Array.isArray(rd)?rd:[]);
+      var valid = recArr.filter(function(r){ return r&&r.score&&r.score.recovery_score!=null; });
+      if(valid.length > 0){ D.recoveries = valid; break; }
     }
 
-    // ── Sleep: pega últimos 7, filtra naps
-    var sd = await wGet('/activity/sleep?limit=7', tok);
-    var sleepArr = sd.records || sd.sleep_collection || [];
-    D.sleeps = sleepArr.filter(function(s){ return s && !s.nap; });
-    console.log('Whoop FINAL: ciclos='+D.cycles.length+' recuperacoes='+D.recoveries.length+' sono='+D.sleeps.length);
-    if(D.recoveries[0]) console.log('Ultima recuperacao:', D.recoveries[0].score.recovery_score+'%', 'HRV:', Math.round(D.recoveries[0].score.hrv_rmssd_milli||0)+'ms');
-    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Ultimo sono:', D.sleeps[0].score.sleep_performance_percentage+'%');
+    // ── Sleep: tenta variantes do endpoint
+    D.sleeps = [];
+    var sleepEndpoints = ['/activity/sleep?limit=7', '/sleep?limit=7', '/activity/sleep?limit=10'];
+    for(var si=0; si<sleepEndpoints.length; si++){
+      var sd = await wGet(sleepEndpoints[si], tok);
+      var sraw = JSON.stringify(sd);
+      console.log('Sleep endpoint', sleepEndpoints[si], ':', sraw.slice(0,200));
+      var sleepArr = sd.records || sd.sleep_collection || sd.data || (Array.isArray(sd)?sd:[]);
+      var validSleep = sleepArr.filter(function(s){ return s && !s.nap; });
+      if(validSleep.length > 0){ D.sleeps = validSleep; break; }
+    }
+
+    console.log('Whoop FINAL: ciclos='+D.cycles.length+' rec='+D.recoveries.length+' sono='+D.sleeps.length);
+    if(D.recoveries[0]) console.log('Recovery:', D.recoveries[0].score.recovery_score+'% HRV:'+Math.round(D.recoveries[0].score.hrv_rmssd_milli||0)+'ms');
+    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Sono:', D.sleeps[0].score.sleep_performance_percentage+'%');
   } catch(e){ console.warn('Whoop erro:',e); }
 }
 
