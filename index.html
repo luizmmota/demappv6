@@ -572,14 +572,42 @@ async function csv(url){
   } catch(e){ return []; }
 }
 function parseCSV(txt){
-  var lines = txt.trim().split('\n');
-  if(lines.length < 2) return [];
-  var hdr = lines[0].split(',').map(function(h){ return h.trim().replace(/"/g,''); });
-  return lines.slice(1).map(function(l){
-    var v = l.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) || [];
-    var o = {}; hdr.forEach(function(h,i){ o[h] = (v[i]||'').replace(/"/g,'').trim(); });
-    return o;
-  }).filter(function(r){ return r[hdr[0]]; });
+  // Proper CSV parser — handles quoted fields with commas/newlines
+  function tokenize(str){
+    var rows=[],row=[],cur='',inQ=false;
+    for(var i=0;i<str.length;i++){
+      var c=str[i],n=str[i+1];
+      if(inQ){
+        if(c==='"'&&n==='"'){cur+='"';i++;}
+        else if(c==='"'){inQ=false;}
+        else{cur+=c;}
+      } else {
+        if(c==='"'){inQ=true;}
+        else if(c===','){row.push(cur.trim());cur='';}
+        else if(c==='\r'&&n==='\n'){row.push(cur.trim());rows.push(row);row=[];cur='';i++;}
+        else if(c==='\n'){row.push(cur.trim());rows.push(row);row=[];cur='';}
+        else{cur+=c;}
+      }
+    }
+    if(cur||row.length){row.push(cur.trim());rows.push(row);}
+    return rows;
+  }
+  var rows=tokenize(txt.trim());
+  if(rows.length<2) return [];
+  var hdr=rows[0].map(function(h){return h.replace(/"/g,'').trim();});
+  var result=[];
+  for(var i=1;i<rows.length;i++){
+    var row=rows[i];
+    if(!row[0]||!row[0].trim()) continue;
+    // Filter out rows that look like metadata/notes (no valid date or no activity_type)
+    var firstVal=row[0].trim();
+    // Skip rows that don't start with a date-like string (YYYY-MM-DD)
+    if(!/^\d{4}-\d{2}-\d{2}/.test(firstVal)) continue;
+    var o={};
+    hdr.forEach(function(h,j){o[h]=(row[j]||'').trim();});
+    result.push(o);
+  }
+  return result;
 }
 async function writeRow(row){
   try{
@@ -605,7 +633,25 @@ function updateFitBadge(){
 }
 
 // ── EMOJI ─────────────────────────────────────────────────────────────────────
-function em(t){ var m={Run:'🏃',Ride:'🚴',Bike:'🚴',Swim:'🏊',Strength:'💪',Rest:'😴',Brick:'🔥',Walk:'🚶',Other:'🏋️'}; return m[t]||'🏋️'; }
+function em(t){
+  if(!t) return '🏋️';
+  var m={
+    Run:'🏃', Ride:'🚴', Bike:'🚴', Swim:'🏊', Strength:'💪', Rest:'😴',
+    Brick:'🔥', Walk:'🚶', Other:'🏋️', Yoga:'🧘', Hike:'🥾',
+    VirtualRun:'🏃', VirtualRide:'🚴', WeightTraining:'🏋️',
+    Rowing:'🚣', Kayaking:'🚣', Crossfit:'🏋️', Elliptical:'🚴',
+    StairStepper:'🏃', Soccer:'⚽', Tennis:'🎾', Golf:'⛳'
+  };
+  // Normalize: try exact match first, then lowercase partial match
+  if(m[t]) return m[t];
+  var tl = t.toLowerCase();
+  if(/run/.test(tl)) return '🏃';
+  if(/ride|bike|cycl|virtual.*ride/.test(tl)) return '🚴';
+  if(/swim|pool/.test(tl)) return '🏊';
+  if(/weight|strength|gym|lift/.test(tl)) return '🏋️';
+  if(/rest|recover|off/.test(tl)) return '😴';
+  return '🏋️';
+}
 
 // ── RENDER ROUTER ─────────────────────────────────────────────────────────────
 function renderPage(){
@@ -662,13 +708,22 @@ async function renderBriefing(){
   // Hero section
   var ringClass = recScore === null ? 'ring-n' : recScore >= 67 ? 'ring-g' : recScore >= 34 ? 'ring-o' : 'ring-r';
   var ringLabel = recScore === null ? 'No data yet' : recScore >= 67 ? '🟢 Green — Go hard' : recScore >= 34 ? '🟡 Yellow — Train smart' : '🔴 Red — Take it easy';
-  var ringDisplay = recScore !== null ? recScore : hasW ? '—' : '?';
+  var ringDisplay = recScore !== null ? recScore : hasW ? (D.cycles.length ? '—' : '?') : '?';
+  var recNote = '';
+  if(recScore === null && D.cycles.length > 0){
+    if(D.recoveries.length > 0){
+      recNote = '<small style="font-size:0.68rem;color:var(--muted);display:block;margin-top:0.3rem">Last recovery: ' + new Date(D.recoveries[0]._date||'').toLocaleDateString('en-US',{month:'short',day:'numeric'}) + '</small>';
+    } else {
+      recNote = '<small style="font-size:0.68rem;color:var(--muted);display:block;margin-top:0.3rem">Syncs after sleep</small>';
+    }
+  }
+  var recNote = recScore !== null ? '' : (D.recoveries.length === 0 && D.cycles.length > 0) ? '<small style="font-size:0.68rem;color:var(--muted);display:block;margin-top:0.3rem">No recovery yet today — shown after sleep sync</small>' : '';
 
   var heroHtml = hasW ? (
     '<div class="hero-row">' +
     '<div class="rec-ring ' + ringClass + '">' + ringDisplay + '</div>' +
     '<div class="hero-info">' +
-    '<h2>Recovery Score</h2><p>' + ringLabel + '</p>' +
+    '<h2>Recovery Score</h2><p>' + ringLabel + '</p>' + recNote +
     '<div class="hero-stats">' +
     (hrv ? '<div class="hs"><div class="hs-val">' + hrv + 'ms</div><div class="hs-lbl">HRV</div></div>' : '') +
     (rhr ? '<div class="hs"><div class="hs-val">' + rhr + '</div><div class="hs-lbl">RHR</div></div>' : '') +
@@ -766,6 +821,7 @@ function renderDashboard(){
   var rc = r0 !== null ? (r0>=67?'cg':r0>=34?'co':'cr') : 'ca';
 
   // Build chart data for both 7d and 30d
+  // Use all available recoveries (could be from past days, not just today)
   var recov7  = D.recoveries.slice(0,7).reverse();
   var hrv7    = recov7.map(function(r){ return Math.round(r.score.hrv_rmssd_milli||0); });
   var rsc7    = recov7.map(function(r){ return r.score.recovery_score||0; });
@@ -803,7 +859,7 @@ function renderDashboard(){
 
   setTimeout(function(){
     var coBar = Object.assign({},co,{scales:Object.assign({},co.scales,{y:Object.assign({},co.scales.y,{min:0,max:100})})});
-    if(rsc7.length){
+    if(rsc7.length > 0){
       new Chart(gi('cr'),{type:'bar',data:{labels:lbl7,datasets:[{data:rsc7,backgroundColor:rsc7.map(function(s){ return s>=67?'rgba(0,229,160,0.7)':s>=34?'rgba(255,179,71,0.7)':'rgba(255,77,109,0.7)'; }),borderRadius:5}]},options:coBar});
       new Chart(gi('ch'),{type:'line',data:{labels:lbl7,datasets:[{data:hrv7,borderColor:'var(--purple)',backgroundColor:'rgba(167,139,250,0.08)',tension:0.4,fill:true,pointBackgroundColor:'var(--purple)',pointRadius:3}]},options:co});
     }
@@ -890,14 +946,20 @@ function renderActivities(){
       '<div class="mc-sub">TSS: ' + s.tss + ' · ' + Math.round(s.duration/60) + 'h</div></div>';
   }).join('');
 
-  var rows = D.acts.slice(0,20).map(function(a){
+  var rows = D.acts.slice(0,20).map(function(a,idx){
     var tc = +a.tss > 100 ? 'co' : +a.tss > 60 ? 'ca' : 'cg';
-    return '<tr>' +
-      '<td>' + (a.date||'—') + '</td>' +
-      '<td>' + em(a.activity_type) + ' ' + (a.activity_type||'—') + '</td>' +
-      '<td>' + (a.duration_minutes||'—') + 'min</td>' +
-      '<td>' + (a.distance_km ? a.distance_km + 'km' : '—') + '</td>' +
+    var sportEmoji = em(a.activity_type);
+    var sportLabel = a.activity_type || '—';
+    // Normalize sport display
+    if(sportLabel==='VirtualRun') sportLabel='Run (Virtual)';
+    if(sportLabel==='WeightTraining') sportLabel='Weights';
+    return '<tr id="arow-'+idx+'">' +
+      '<td style="font-family:var(--font-mono);font-size:0.75rem">' + (a.date||'—') + '</td>' +
+      '<td>' + sportEmoji + ' ' + sportLabel + '</td>' +
+      '<td style="font-family:var(--font-mono)">' + (a.duration_minutes||'—') + 'min</td>' +
+      '<td style="font-family:var(--font-mono)">' + (a.distance_km ? (+a.distance_km).toFixed(1)+'km' : '—') + '</td>' +
       '<td class="' + tc + '" style="font-family:var(--font-mono);font-weight:600">' + (a.tss||'—') + '</td>' +
+      '<td><button onclick="editAct('+idx+')" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:0.65rem;padding:0.15rem 0.45rem;cursor:pointer;font-family:var(--font-mono)">edit TSS</button></td>' +
     '</tr>';
   }).join('');
 
@@ -911,11 +973,40 @@ function renderActivities(){
     '<div class="card">' +
       '<div class="card-title">🏃 Recent Activities</div>' +
       '<table class="dtable">' +
-        '<thead><tr><th>Date</th><th>Sport</th><th>Duration</th><th>Distance</th><th>TSS</th></tr></thead>' +
+        '<thead><tr><th>Date</th><th>Sport</th><th>Duration</th><th>Distance</th><th>TSS</th><th></th></tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>' +
       '<div class="notice" style="margin-top:0.75rem">Synced from Garmin/Strava via Google Sheets · Showing last 20</div>' +
     '</div>';
+}
+
+// ── ACTIVITY TSS EDIT ────────────────────────────────────────────────────────────
+function editAct(idx){
+  var a = D.acts[idx]; if(!a) return;
+  var row = gi('arow-'+idx); if(!row) return;
+  var currentTSS = a.tss || '';
+  row.cells[4].innerHTML = '<input type="number" id="tss-'+idx+'" value="'+currentTSS+'" style="width:60px;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-family:var(--font-mono);font-size:0.8rem;padding:0.15rem 0.35rem;text-align:center"/>';
+  row.cells[5].innerHTML = '<button onclick="saveActTSS('+idx+')" style="background:var(--green);border:none;border-radius:4px;color:#000;font-size:0.65rem;padding:0.15rem 0.45rem;cursor:pointer;font-weight:700;font-family:var(--font-head)">Save</button> <button onclick="renderActivities()" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:0.65rem;padding:0.15rem 0.45rem;cursor:pointer;font-family:var(--font-mono)">Cancel</button>';
+  gi('tss-'+idx).focus(); gi('tss-'+idx).select();
+}
+async function saveActTSS(idx){
+  var a = D.acts[idx]; if(!a) return;
+  var newTSS = gi('tss-'+idx); if(!newTSS) return;
+  var val = newTSS.value.trim();
+  if(!val){ alert('Enter a TSS value'); return; }
+  a.tss = val;
+  var row = gi('arow-'+idx); if(!row) return;
+  row.cells[5].innerHTML = '<span style="color:var(--orange);font-family:var(--font-mono);font-size:0.7rem">Saving…</span>';
+  // Write updated row back to sheet: [date, activity_type, duration_minutes, distance_km, tss, ...]
+  var sheetRow = [a.date, a.activity_type, a.duration_minutes, a.distance_km||'', val, a.elevation_m||'', a.avg_hr||'', a.avg_watts||'', a.notes||''];
+  var res = await writeRow(sheetRow);
+  if(res.ok){
+    row.cells[4].innerHTML = '<span style="font-family:var(--font-mono);font-weight:600;color:var(--green)">' + val + '</span>';
+    row.cells[5].innerHTML = '<span style="color:var(--green);font-size:0.7rem">✓ Saved</span>';
+    setTimeout(function(){ renderActivities(); }, 1500);
+  } else {
+    row.cells[5].innerHTML = '<span style="color:var(--accent2);font-size:0.7rem">Error — check Sheet</span>';
+  }
 }
 
 // ── RACE PEAKING ──────────────────────────────────────────────────────────────
@@ -1018,6 +1109,21 @@ async function saveFit(){
   }
 }
 
+// ── MARKDOWN → HTML ──────────────────────────────────────────────────────────────
+function mdHtml(t){
+  return t
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^#{1,3}\s+(.+)$/gm,'<strong style="color:var(--accent);display:block;margin-top:0.5rem">$1</strong>')
+    .replace(/^[-•]\s+(.+)$/gm,'<span style="display:block;padding-left:0.75rem">· $1</span>')
+    .replace(/^\d+\.\s+(.+)$/gm,'<span style="display:block;padding-left:0.75rem">$1</span>')
+    .replace(/
+
+/g,'<br><br>')
+    .replace(/
+/g,'<br>');
+}
+
 // ── CHAT ──────────────────────────────────────────────────────────────────────
 async function sendChat(){
   var inp = gi('cin'), msg = inp.value.trim(); if(!msg) return;
@@ -1025,7 +1131,7 @@ async function sendChat(){
   CH.push({role:'user', content:buildCtx() + '\n\nATHLETE: ' + msg});
   var th = addMsg('ai','<div class="loading"><div class="spin"></div>Thinking…</div>');
   var rep = await askChat(CH);
-  th.querySelector('.bub').innerHTML = rep.replace(/\n/g,'<br>');
+  th.querySelector('.bub').innerHTML = mdHtml(rep);
   CH.push({role:'assistant', content:rep});
   gi('sbtn').disabled = false; gi('cmsgs').scrollTop = 1e9;
 }
