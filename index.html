@@ -346,7 +346,7 @@ var HOOK = 'https://script.google.com/macros/s/AKfycbydZsJTUgCgUsl3_wwI99_7DgQwN
 var W_AUTH  = 'https://api.prod.whoop.com/oauth/oauth2/auth';
 var W_REDIR = 'http://localhost';
 var W_SCOPE = 'read:recovery read:sleep read:workout read:cycles read:body_measurement';
-var W_API   = 'https://api.prod.whoop.com/developer/v1';
+var W_API   = 'https://api.prod.whoop.com/developer/v2';
 var CLAUDE  = 'https://api.anthropic.com/v1/messages';
 
 var C = {}, CH = [], IC = {ok:false,n:0};
@@ -483,40 +483,30 @@ async function loadWhoop(){
   if(tok && Date.now() > exp) tok = await refreshTok();
   if(!tok){ return; }
   try{
-    // Get last 10 cycles to ensure we find recent recovery
-    // Whoop cycle structure:
-    //   cycle[0] = TODAY (in progress, strain accumulating, NO recovery yet)
-    //   cycle[1] = YESTERDAY (completed after waking up, HAS recovery score)
-    //   cycle[2+] = older days
-    var cd = await wGet('/cycle?limit=10', tok);
-    if(!cd.records){ console.warn('Whoop cycles error:', cd); return; }
-    D.cycles = cd.records || [];
+    // Whoop v2 API — completely different endpoints from v1
+    // v2 has direct /recovery endpoint, no longer nested under cycles
 
-    // Strain comes from TODAY's cycle (cycle[0])
-    // Recovery comes from COMPLETED cycles (cycle[1], cycle[2]...)
-    D.recoveries = [];
-    for(var i = 0; i < D.cycles.length; i++){
-      var cycleRaw = D.cycles[i];
-      // Try to get recovery for this cycle
-      var rec = await wGet('/cycle/' + cycleRaw.id + '/recovery', tok);
-      // 404 or empty score means this cycle has no recovery (today's in-progress cycle)
-      if(rec && rec.score && rec.score.recovery_score != null){
-        rec._cycleStart = cycleRaw.start;
-        rec._cycleId = cycleRaw.id;
-        D.recoveries.push(rec);
-        // Once we have 7 recoveries, stop
-        if(D.recoveries.length >= 7) break;
-      }
-    }
+    // Get recent cycles (for strain — today's cycle[0])
+    var cd = await wGet('/cycle?limit=7', tok);
+    if(!cd.records && !cd.cycle_collection){ console.warn('Whoop cycles error:', cd); return; }
+    D.cycles = cd.records || cd.cycle_collection || [];
 
-    // Get sleep — last night's sleep is index [0]
+    // Get recoveries directly — v2 has its own /recovery endpoint
+    var rd = await wGet('/recovery?limit=7', tok);
+    var recArr = rd.records || rd.recovery_collection || [];
+    D.recoveries = recArr.filter(function(r){
+      return r.score && r.score.recovery_score != null;
+    });
+
+    // Get sleep
     var sd = await wGet('/activity/sleep?limit=7', tok);
-    D.sleeps = (sd.records || []).filter(function(s){ return !s.nap; }); // filter out naps
+    var sleepArr = sd.records || sd.sleep_collection || [];
+    D.sleeps = sleepArr.filter(function(s){ return !s.nap; });
 
-    console.log('Whoop OK — cycles:' + D.cycles.length + ' recoveries:' + D.recoveries.length + ' sleeps:' + D.sleeps.length);
-    if(D.recoveries[0]) console.log('Latest recovery score:', D.recoveries[0].score.recovery_score);
+    console.log('Whoop v2 OK — cycles:' + D.cycles.length + ' recoveries:' + D.recoveries.length + ' sleeps:' + D.sleeps.length);
+    if(D.recoveries[0]) console.log('Latest recovery:', D.recoveries[0].score.recovery_score + '%');
     if(D.cycles[0] && D.cycles[0].score) console.log('Today strain:', D.cycles[0].score.strain);
-    if(D.sleeps[0] && D.sleeps[0].score) console.log('Last sleep perf:', D.sleeps[0].score.sleep_performance_percentage);
+    if(D.sleeps[0] && D.sleeps[0].score) console.log('Last sleep:', D.sleeps[0].score.sleep_performance_percentage + '%');
   } catch(e){ console.warn('Whoop load error:', e); }
 }
 
@@ -688,131 +678,152 @@ async function renderBriefing(){
   var cyc  = latestCycle();
   var hasW = D.cycles.length > 0;
 
-  // Recovery
+  // Recovery data (from last completed cycle — yesterday)
   var recScore = rec ? rec.recovery_score : null;
   var hrv      = rec ? Math.round(rec.hrv_rmssd_milli || 0) : null;
   var rhr      = rec ? Math.round(rec.resting_heart_rate || 0) : null;
-  var spo2     = rec ? (rec.spo2_percentage || null) : null;
 
-  // Sleep
+  // Sleep data (last night)
   var sleepPerf = sl ? Math.round(sl.sleep_performance_percentage || 0) : null;
   var sleepEff  = sl ? Math.round(sl.sleep_efficiency_percentage || 0) : null;
   var sleepH    = sl && sl.stage_summary ? ((sl.stage_summary.total_in_bed_time_milli||0)/3.6e9).toFixed(1) : null;
+  var remPct    = sl && sl.stage_summary ? Math.round((sl.stage_summary.total_rem_sleep_time_milli||0)/(sl.stage_summary.total_in_bed_time_milli||1)*100) : null;
+  var deepPct   = sl && sl.stage_summary ? Math.round((sl.stage_summary.total_slow_wave_sleep_time_milli||0)/(sl.stage_summary.total_in_bed_time_milli||1)*100) : null;
 
-  // Strain
-  var strain = cyc ? (cyc.strain || 0).toFixed(1) : null;
+  // Strain (today's in-progress cycle)
+  var strain    = cyc ? (+cyc.strain||0).toFixed(1) : null;
+  var maxStrain = 21;
+  var strainPct = strain ? Math.min((+strain/maxStrain)*100,100) : 0;
+  var strainColor = !strain||+strain<10 ? 'var(--accent)' : +strain<14 ? 'var(--orange)' : 'var(--accent2)';
+  var strainClass = !strain||+strain<10 ? 'ca' : +strain<14 ? 'co' : 'cr';
+
+  // Recovery ring color
+  var recColor = recScore === null ? '#2a3d50' : recScore>=67 ? 'var(--green)' : recScore>=34 ? 'var(--orange)' : 'var(--accent2)';
+  var recClass = recScore === null ? 'ring-n' : recScore>=67 ? 'ring-g' : recScore>=34 ? 'ring-o' : 'ring-r';
+  var recLabel = recScore === null ? '—' : recScore>=67 ? 'Green' : recScore>=34 ? 'Yellow' : 'Red';
+
+  // Sleep ring color
+  var slColor = sleepPerf === null ? '#2a3d50' : sleepPerf>=85 ? 'var(--accent)' : sleepPerf>=70 ? 'var(--orange)' : 'var(--accent2)';
+  var slLabel = sleepPerf === null ? '—' : sleepPerf>=85 ? 'Optimal' : sleepPerf>=70 ? 'Fair' : 'Poor';
 
   // Fitness
   var tp = D.tph[0] || {};
-  var ctl = tp.ctl || '—', atl = tp.atl || '—', tsb = tp.tsb || '—';
+  var ctl = tp.ctl||'—', atl = tp.atl||'—', tsb = tp.tsb||'—';
   var tsbn = parseInt(tsb);
-  var tsbColor = isNaN(tsbn) ? 'ca' : tsbn > 5 ? 'cg' : tsbn < -15 ? 'cr' : 'co';
-  var tsbLabel = isNaN(tsbn) ? 'No data' : tsbn > 5 ? 'Fresh' : tsbn < -15 ? 'Fatigued' : 'Optimal';
+  var tsbColor = isNaN(tsbn)?'ca':tsbn>5?'cg':tsbn<-15?'cr':'co';
+  var tsbLabel = isNaN(tsbn)?'No data':tsbn>5?'Fresh':tsbn<-15?'Fatigued':'Optimal';
 
-  // Today's workouts from iCal
+  // Today workouts
   var today = new Date().toDateString();
-  var todayW = getPlanned().filter(function(x){ try{ return new Date(x.date).toDateString() === today; } catch(e){ return false; } });
+  var todayW = getPlanned().filter(function(x){ try{ return new Date(x.date).toDateString()===today; }catch(e){ return false; } });
 
-  // This week's completed activities from Sheet
-  var weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  var weekActs = D.acts.filter(function(a){
-    try{ return new Date(a.date) >= weekStart; } catch(e){ return false; }
-  });
-  var weekTSS = weekActs.reduce(function(s,a){ return s + (+a.tss||0); }, 0);
+  // This week completed
+  var weekStart = new Date(); weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  var weekActs = D.acts.filter(function(a){ try{ return new Date(a.date)>=weekStart; }catch(e){ return false; } });
+  var weekTSS = weekActs.reduce(function(s,a){ return s+(+a.tss||0); },0);
 
-  // Hero section
-  var ringClass = recScore === null ? 'ring-n' : recScore >= 67 ? 'ring-g' : recScore >= 34 ? 'ring-o' : 'ring-r';
-  // Determine if recovery is from today or yesterday
-  var recDate = D.recoveries[0] ? new Date(D.recoveries[0]._cycleStart||'') : null;
-  var recIsToday = recDate ? recDate.toDateString() === new Date().toDateString() : false;
-  var recLabel = recScore === null ? 'No data' :
-    recScore >= 67 ? '🟢 Green — Go hard' :
-    recScore >= 34 ? '🟡 Yellow — Train smart' : '🔴 Red — Take it easy';
-  var ringLabel = recScore === null ? 'No recovery data yet' :
-    (recIsToday ? '' : 'Last night · ') + recLabel;
-  var ringDisplay = recScore !== null ? recScore : '—';
-  var recNote = '';
-  if(recScore === null && D.cycles.length > 0){
-    if(D.recoveries.length > 0){
-      recNote = '<small style="font-size:0.68rem;color:var(--muted);display:block;margin-top:0.3rem">Last recovery: ' + new Date(D.recoveries[0]._date||'').toLocaleDateString('en-US',{month:'short',day:'numeric'}) + '</small>';
-    } else {
-      recNote = '<small style="font-size:0.68rem;color:var(--muted);display:block;margin-top:0.3rem">Syncs after sleep</small>';
-    }
+  // ── 3 WHOOP BOXES ──
+  function ringCircle(pct, color, size){
+    var r = size/2 - 5;
+    var circ = 2*Math.PI*r;
+    var dash = pct/100*circ;
+    return '<svg width="'+size+'" height="'+size+'" style="transform:rotate(-90deg)">' +
+      '<circle cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" fill="none" stroke="#1c2830" stroke-width="5"/>' +
+      '<circle cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="5" stroke-dasharray="'+dash+' '+circ+'" stroke-linecap="round"/>' +
+    '</svg>';
   }
-  var recNote = recScore !== null ? '' : (D.recoveries.length === 0 && D.cycles.length > 0) ? '<small style="font-size:0.68rem;color:var(--muted);display:block;margin-top:0.3rem">No recovery yet today — shown after sleep sync</small>' : '';
 
-  var heroHtml = hasW ? (
-    '<div class="hero-row">' +
-    '<div class="rec-ring ' + ringClass + '">' + ringDisplay + '</div>' +
-    '<div class="hero-info">' +
-    '<h2>Recovery Score</h2><p>' + ringLabel + '</p>' + recNote +
-    '<div class="hero-stats">' +
-    (hrv ? '<div class="hs"><div class="hs-val">' + hrv + 'ms</div><div class="hs-lbl">HRV</div></div>' : '') +
-    (rhr ? '<div class="hs"><div class="hs-val">' + rhr + '</div><div class="hs-lbl">RHR</div></div>' : '') +
-    (sleepH ? '<div class="hs"><div class="hs-val">' + sleepH + 'h</div><div class="hs-lbl">Sleep</div></div>' : '') +
-    (sleepPerf ? '<div class="hs"><div class="hs-val">' + sleepPerf + '%</div><div class="hs-lbl">Sleep Perf</div></div>' : '') +
-    (strain ? '<div class="hs"><div class="hs-val">' + strain + '</div><div class="hs-lbl">Strain</div></div>' : '') +
-    '</div></div></div>'
+  var whoopBoxes = hasW ? (
+    '<div class="g3" style="margin-bottom:1.25rem">' +
+
+    // RECOVERY BOX
+    '<div class="mc" style="text-align:center;padding:1.35rem">' +
+      '<div class="mc-label" style="margin-bottom:0.75rem">💚 Recovery</div>' +
+      '<div style="position:relative;display:inline-block;margin-bottom:0.6rem">' +
+        ringCircle(recScore||0, recColor, 88) +
+        '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
+          '<div style="font-family:var(--font-head);font-size:1.5rem;font-weight:800;color:'+recColor+';line-height:1">' + (recScore!==null?recScore:'—') + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--muted)">' + (recScore!==null?'/ 100':'') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-family:var(--font-head);font-size:0.75rem;font-weight:700;color:'+recColor+'">' + recLabel + '</div>' +
+      '<div style="font-family:var(--font-mono);font-size:0.62rem;color:var(--muted);margin-top:0.4rem">' +
+        (hrv ? 'HRV '+hrv+'ms' : '') + (hrv&&rhr?' · ':'') + (rhr ? 'RHR '+rhr : '') +
+      '</div>' +
+    '</div>' +
+
+    // SLEEP BOX
+    '<div class="mc" style="text-align:center;padding:1.35rem">' +
+      '<div class="mc-label" style="margin-bottom:0.75rem">😴 Sleep</div>' +
+      '<div style="position:relative;display:inline-block;margin-bottom:0.6rem">' +
+        ringCircle(sleepPerf||0, slColor, 88) +
+        '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
+          '<div style="font-family:var(--font-head);font-size:1.5rem;font-weight:800;color:'+slColor+';line-height:1">' + (sleepPerf!==null?sleepPerf+'%':'—') + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--muted)">' + (sleepH?sleepH+'h':'') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-family:var(--font-head);font-size:0.75rem;font-weight:700;color:'+slColor+'">' + slLabel + '</div>' +
+      '<div style="font-family:var(--font-mono);font-size:0.62rem;color:var(--muted);margin-top:0.4rem">' +
+        (sleepEff?'Eff '+sleepEff+'%':'') + (sleepEff&&remPct?' · ':'') + (remPct?'REM '+remPct+'%':'') +
+      '</div>' +
+    '</div>' +
+
+    // STRAIN BOX
+    '<div class="mc" style="text-align:center;padding:1.35rem">' +
+      '<div class="mc-label" style="margin-bottom:0.75rem">⚡ Strain</div>' +
+      '<div style="position:relative;display:inline-block;margin-bottom:0.6rem">' +
+        ringCircle(strainPct, strainColor, 88) +
+        '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
+          '<div style="font-family:var(--font-head);font-size:1.5rem;font-weight:800;color:'+strainColor+';line-height:1">' + (strain||'—') + '</div>' +
+          '<div style="font-family:var(--font-mono);font-size:0.55rem;color:var(--muted)">/ 21</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-family:var(--font-head);font-size:0.75rem;font-weight:700;color:'+strainColor+'">' +
+        (!strain||+strain<10?'Low':+strain<14?'Moderate':'High') +
+      '</div>' +
+      '<div style="font-family:var(--font-mono);font-size:0.62rem;color:var(--muted);margin-top:0.4rem">Today (in progress)</div>' +
+    '</div>' +
+
+    '</div>'
   ) : '<div class="wcta"><div><h3>💚 Connect your Whoop</h3><p>See your real recovery, HRV, sleep and strain data.</p></div><button class="btn-wc" onclick="openWhoopModal()">Connect →</button></div>';
 
-  // Whoop health monitors
-  var monitorsHtml = '';
-  if(hasW && rec){
-    var skinTemp = rec.skin_temp_celsius ? rec.skin_temp_celsius.toFixed(1) + '°C' : null;
-    monitorsHtml = '<div class="monitors">' +
-      '<div class="mon-card">' +
-        '<div class="mon-title">💤 Sleep Performance</div>' +
-        '<div class="mon-val ' + (sleepPerf >= 85 ? 'cg' : sleepPerf >= 70 ? 'co' : 'cr') + '">' + (sleepPerf !== null ? sleepPerf + '%' : '—') + '</div>' +
-        '<div class="mon-bar-bg"><div class="mon-bar" style="width:' + (sleepPerf||0) + '%;background:' + (sleepPerf >= 85 ? 'var(--green)' : sleepPerf >= 70 ? 'var(--orange)' : 'var(--accent2)') + '"></div></div>' +
-        '<div class="mon-desc">Efficiency: ' + (sleepEff !== null ? sleepEff + '%' : '—') + (skinTemp ? ' · Skin temp: ' + skinTemp : '') + '</div>' +
-      '</div>' +
-      '<div class="mon-card">' +
-        '<div class="mon-title">⚡ Today\'s Strain</div>' +
-        '<div class="mon-val ' + (!strain||+strain<10?'ca':+strain<14?'co':'cr') + '">' + (strain || '—') + '</div>' +
-        '<div class="mon-bar-bg"><div class="mon-bar" style="width:' + Math.min((+strain||0)/21*100,100) + '%;background:' + (!strain||+strain<10?'var(--accent)':+strain<14?'var(--orange)':'var(--accent2)') + '"></div></div>' +
-        '<div class="mon-desc">SPO₂: ' + (spo2 ? spo2.toFixed(1) + '%' : '—') + ' · HRV: ' + (hrv ? hrv + 'ms' : '—') + '</div>' +
-      '</div>' +
-    '</div>';
-  }
-
-  // Today's workouts
+  // Today workouts html
   var todayHtml = '';
   if(todayW.length){
     var src = IC.ok ? '<span class="spill spi">iCal</span>' : '<span class="spill sps">sheet</span>';
-    todayHtml = '<div class="card"><div class="card-title">📅 Today\'s Workouts &nbsp;' + src + '</div><div class="wlist">' +
+    todayHtml = '<div class="card"><div class="card-title">📅 Today&#39;s Workouts &nbsp;'+src+'</div><div class="wlist">' +
       todayW.map(function(wk){
-        return '<div class="wi wi-' + wk.workout_type + '">' +
-          '<div class="we">' + em(wk.workout_type) + '</div>' +
-          '<div class="winfo"><div class="wt">' + wk.title + '</div>' +
-          '<div class="wm">' + (wk.duration_minutes > 0 ? wk.duration_minutes + 'min' : '') + (wk.intensity_zone ? ' · ' + wk.intensity_zone : '') + (wk.description ? ' · <em>' + wk.description + '</em>' : '') + '</div></div>' +
+        return '<div class="wi wi-'+wk.workout_type+'">' +
+          '<div class="we">'+em(wk.workout_type)+'</div>' +
+          '<div class="winfo"><div class="wt">'+wk.title+'</div>' +
+          '<div class="wm">'+(wk.duration_minutes>0?wk.duration_minutes+'min':'')+(wk.intensity_zone?' · '+wk.intensity_zone:'')+(wk.description?' · <em>'+wk.description+'</em>':'')+'</div></div>' +
         '</div>';
-      }).join('') + '</div></div>';
+      }).join('')+'</div></div>';
   }
 
-  // This week's activities
+  // Week completed html
   var weekHtml = '';
   if(weekActs.length){
-    weekHtml = '<div class="card"><div class="card-title">✅ Completed This Week (' + weekActs.length + ' sessions · ' + weekTSS + ' TSS)</div><div class="wlist">' +
+    weekHtml = '<div class="card"><div class="card-title">✅ Completed This Week ('+weekActs.length+' sessions · '+weekTSS+' TSS)</div><div class="wlist">' +
       weekActs.slice(0,5).map(function(a){
-        return '<div class="wi wi-' + (a.activity_type||'Other') + '">' +
-          '<div class="we">' + em(a.activity_type) + '</div>' +
-          '<div class="winfo"><div class="wt">' + (a.activity_type||'Workout') + ' — ' + (a.date||'') + '</div>' +
-          '<div class="wm">' + (a.duration_minutes||'') + 'min' + (a.tss ? ' · TSS: ' + a.tss : '') + (a.distance_km ? ' · ' + a.distance_km + 'km' : '') + '</div></div>' +
+        return '<div class="wi wi-'+(a.activity_type||'Other')+'">' +
+          '<div class="we">'+em(a.activity_type)+'</div>' +
+          '<div class="winfo"><div class="wt">'+(a.activity_type||'Workout')+' — '+(a.date||'')+'</div>' +
+          '<div class="wm">'+(a.duration_minutes||'')+'min'+(a.tss?' · TSS: '+a.tss:'')+(a.distance_km?' · '+a.distance_km+'km':'')+'</div></div>' +
           '<div class="done-check">✓</div>' +
         '</div>';
-      }).join('') + '</div></div>';
+      }).join('')+'</div></div>';
   }
 
   el.innerHTML =
     '<p style="font-family:var(--font-mono);font-size:0.7rem;color:var(--muted);margin-bottom:0.85rem">' +
-    new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '</p>' +
+    new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</p>' +
     staleBanner() +
-    heroHtml +
-    monitorsHtml +
+    whoopBoxes +
     '<div class="g3">' +
-      '<div class="mc"><div class="mc-label">CTL — Fitness</div><div class="mc-val ca">' + ctl + '</div><div class="mc-sub">Chronic Training Load</div></div>' +
-      '<div class="mc"><div class="mc-label">ATL — Fatigue</div><div class="mc-val co">' + atl + '</div><div class="mc-sub">Acute Training Load</div></div>' +
-      '<div class="mc"><div class="mc-label">TSB — Form</div><div class="mc-val ' + tsbColor + '">' + tsb + '</div><div class="mc-sub">' + tsbLabel + '</div></div>' +
+      '<div class="mc"><div class="mc-label">CTL — Fitness</div><div class="mc-val ca">'+ctl+'</div><div class="mc-sub">Chronic Training Load</div></div>' +
+      '<div class="mc"><div class="mc-label">ATL — Fatigue</div><div class="mc-val co">'+atl+'</div><div class="mc-sub">Acute Training Load</div></div>' +
+      '<div class="mc"><div class="mc-label">TSB — Form</div><div class="mc-val '+tsbColor+'">'+tsb+'</div><div class="mc-sub">'+tsbLabel+'</div></div>' +
     '</div>' +
     todayHtml +
     weekHtml +
@@ -847,7 +858,7 @@ function renderDashboard(){
   var recov7  = D.recoveries.slice(0,7).reverse();
   var hrv7    = recov7.map(function(r){ return Math.round(r.score.hrv_rmssd_milli||0); });
   var rsc7    = recov7.map(function(r){ return r.score.recovery_score||0; });
-  var lbl7    = recov7.map(function(r,i){ return r._date ? new Date(r._date).toLocaleDateString('en-US',{weekday:'short'}) : 'D'+(i+1); });
+  var lbl7    = recov7.map(function(r,i){ var d=r._cycleStart||r._date; return d ? new Date(d).toLocaleDateString('en-US',{weekday:'short'}) : 'D'+(i+1); });
 
   var tph = D.tph.slice(0,8).reverse();
   var tpL = tph.map(function(r){ return r.date ? new Date(r.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''; });
