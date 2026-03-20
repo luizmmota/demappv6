@@ -165,10 +165,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
     <div class="fg"><label>iCal URL</label><input type="text" id="s-ical" placeholder="https://www.trainingpeaks.com/ical/YOUR_TOKEN.ics"/><small>Calendar → gear → Share → change webcal:// to https://</small></div>
     <div class="sec">📊 Google Sheets CSV URLs</div>
     <small style="color:var(--muted);font-size:0.72rem;display:block;margin-bottom:0.75rem">File → Share → Publish to web → select each tab → CSV → copy URL</small>
-    <div class="fg"><label>garmin_activities</label><input type="text" id="s-act" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
-    <div class="fg"><label>garmin_daily</label><input type="text" id="s-day" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
-    <div class="fg"><label>tp_fitness_history</label><input type="text" id="s-tph" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
-    <div class="fg"><label>tp_planned_workouts <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:0.9em">(optional if using iCal)</span></label><input type="text" id="s-tpp" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/></div>
+    <div class="fg"><label>garmin_activities</label><input type="text" id="s-act" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=...&output=csv"/></div>
+    <div class="fg"><label>garmin_daily</label><input type="text" id="s-day" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=...&output=csv"/></div>
+    <div class="fg"><label>tp_fitness_history</label><input type="text" id="s-tph" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=...&output=csv"/></div>
+    <div class="fg"><label>tp_planned_workouts <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:0.9em">(optional if using iCal)</span></label><input type="text" id="s-tpp" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=...&output=csv"/></div>
     <div class="sec">✍️ Apps Script <span style="color:var(--green);font-size:0.8em;font-weight:400;text-transform:none;letter-spacing:0"> — pre-configured ✅</span></div>
     <div class="fg"><label>Apps Script URL</label><input type="text" id="s-hook" placeholder="https://script.google.com/macros/s/.../exec"/><small>Pre-filled — handles fitness data write-back</small></div>
     <button class="btn-launch" onclick="saveSetup()">🚀 Launch DEMAPP</button>
@@ -227,12 +227,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 </div>
 
 <script>
-// ── HARDCODED URLs ────────────────────────────────────────────────────────────
-// Cloudflare Worker — Whoop token proxy (zero CORS issues)
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
 var WHOOP_PROXY = 'https://whoop-proxy.luiz-m-mota.workers.dev';
-// Apps Script — fitness data write-back to Google Sheets
 var HOOK = 'https://script.google.com/macros/s/AKfycbydZsJTUgCgUsl3_wwI99_7DgQwNWFiEt2vtrrVFe9tbuj3UKFYDeXmUzq8bFRHC_KXUg/exec';
-
 var W_AUTH  = 'https://api.prod.whoop.com/oauth/oauth2/auth';
 var W_REDIR = 'http://localhost';
 var W_SCOPE = 'read:recovery read:sleep read:workout read:cycles read:body_measurement';
@@ -244,22 +241,11 @@ var C={}, D={whoop:null,acts:[],daily:[],tph:[],tpp:[],ical:[]}, CH=[], IC={ok:f
 function gi(id){return document.getElementById(id);}
 
 function saveSetup(){
-  C={
-    key:  gi('s-key').value.trim(),
-    wid:  gi('s-wid').value.trim(),
-    wsec: gi('s-wsec').value.trim(),
-    ical: gi('s-ical').value.trim().replace('webcal://','https://'),
-    act:  gi('s-act').value.trim(),
-    day:  gi('s-day').value.trim(),
-    tph:  gi('s-tph').value.trim(),
-    tpp:  gi('s-tpp').value.trim(),
-    hook: gi('s-hook').value.trim() || HOOK
-  };
+  C={key:gi('s-key').value.trim(),wid:gi('s-wid').value.trim(),wsec:gi('s-wsec').value.trim(),ical:gi('s-ical').value.trim().replace('webcal://','https://'),act:gi('s-act').value.trim(),day:gi('s-day').value.trim(),tph:gi('s-tph').value.trim(),tpp:gi('s-tpp').value.trim(),hook:gi('s-hook').value.trim()||HOOK};
   if(!C.key){alert('Anthropic API key required.');return;}
   if(!C.wid){alert('Whoop Client ID required.');return;}
   if(!C.wsec){alert('Whoop Client Secret required.');return;}
-  localStorage.setItem('demapp',JSON.stringify(C));
-  launch();
+  localStorage.setItem('demapp',JSON.stringify(C));launch();
 }
 function loadC(){var s=localStorage.getItem('demapp');if(s){C=JSON.parse(s);if(!C.hook)C.hook=HOOK;return true;}return false;}
 function doReset(){localStorage.removeItem('demapp');location.reload();}
@@ -274,42 +260,27 @@ async function reload(){
   renderWhoopTop();renderICalTop();updateFitBadge();renderPage();
 }
 
-// ── WHOOP OAUTH — Cloudflare Worker proxy ─────────────────────────────────────
+// ── WHOOP OAUTH ───────────────────────────────────────────────────────────────
 function openWhoopModal(){
   var state=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)+'xx';
   localStorage.setItem('w_state',state);
-  var url=W_AUTH
-    +'?client_id='+encodeURIComponent(C.wid)
-    +'&redirect_uri='+encodeURIComponent(W_REDIR)
-    +'&response_type=code'
-    +'&scope='+encodeURIComponent(W_SCOPE)
-    +'&state='+state;
+  var url=W_AUTH+'?client_id='+encodeURIComponent(C.wid)+'&redirect_uri='+encodeURIComponent(W_REDIR)+'&response_type=code&scope='+encodeURIComponent(W_SCOPE)+'&state='+state;
   window.open(url,'_blank','width=520,height=720,noopener,noreferrer');
-  gi('m-url').value='';
-  gi('m-st').textContent='';
-  gi('m-st').style.color='var(--muted)';
+  gi('m-url').value='';gi('m-st').textContent='';gi('m-st').style.color='var(--muted)';
   gi('wmodal').classList.add('open');
 }
 function closeModal(){gi('wmodal').classList.remove('open');}
 
 async function submitCode(){
-  var raw=gi('m-url').value.trim(), st=gi('m-st');
+  var raw=gi('m-url').value.trim(),st=gi('m-st');
   if(!raw){st.textContent='⚠️ Paste the full URL first.';return;}
   var code='';
   try{var qs=raw.includes('?')?raw.split('?')[1]:raw;code=new URLSearchParams(qs).get('code')||'';}catch(e){}
   if(!code){st.textContent='❌ No code found. Copy the entire address bar URL.';st.style.color='var(--red)';return;}
-
-  st.textContent='🔄 Connecting via Cloudflare proxy…';st.style.color='var(--orange)';
-
-  var tokenBody='grant_type=authorization_code'
-    +'&code='+encodeURIComponent(code)
-    +'&client_id='+encodeURIComponent(C.wid)
-    +'&client_secret='+encodeURIComponent(C.wsec)
-    +'&redirect_uri='+encodeURIComponent(W_REDIR);
-
+  st.textContent='🔄 Connecting via Cloudflare…';st.style.color='var(--orange)';
+  var body='grant_type=authorization_code&code='+encodeURIComponent(code)+'&client_id='+encodeURIComponent(C.wid)+'&client_secret='+encodeURIComponent(C.wsec)+'&redirect_uri='+encodeURIComponent(W_REDIR);
   try{
-    // Call Cloudflare Worker proxy — no CORS, no redirects, just works
-    var r=await fetch(WHOOP_PROXY+'?body='+encodeURIComponent(tokenBody));
+    var r=await fetch(WHOOP_PROXY+'?body='+encodeURIComponent(body));
     var d=await r.json();
     if(d.access_token){
       localStorage.setItem('w_tok',d.access_token);
@@ -321,9 +292,7 @@ async function submitCode(){
       st.textContent='❌ '+(d.error_description||d.error||JSON.stringify(d));
       st.style.color='var(--red)';
     }
-  }catch(e){
-    st.textContent='❌ '+e.message;st.style.color='var(--red)';
-  }
+  }catch(e){st.textContent='❌ '+e.message;st.style.color='var(--red)';}
 }
 
 function disconnectWhoop(){
@@ -335,13 +304,18 @@ function renderWhoopTop(){
   var el=gi('ws-top');if(!el)return;
   var tok=localStorage.getItem('w_tok');
   var ok=D.whoop&&D.whoop.recovery&&D.whoop.recovery.length>0;
-  if(tok&&ok){
-    el.innerHTML='<span style="color:var(--green);font-size:0.75rem;cursor:pointer" onclick="disconnectWhoop()" title="Click to disconnect">💚 Whoop ✓</span>';
-  }else if(tok){
-    el.innerHTML='<span style="color:var(--orange);font-size:0.75rem">💚 Connecting…</span>';
-  }else{
-    el.innerHTML='<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.3rem 0.75rem;border-radius:6px;cursor:pointer;font-size:0.75rem;font-weight:700">💚 Connect Whoop</button>';
-  }
+  if(tok&&ok){el.innerHTML='<span style="color:var(--green);font-size:0.75rem;cursor:pointer" onclick="disconnectWhoop()" title="Click to disconnect">💚 Whoop ✓</span>';}
+  else if(tok){el.innerHTML='<span style="color:var(--orange);font-size:0.75rem">💚 Connecting…</span>';}
+  else{el.innerHTML='<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.3rem 0.75rem;border-radius:6px;cursor:pointer;font-size:0.75rem;font-weight:700">💚 Connect Whoop</button>';}
+}
+
+// ── WHOOP API — all calls go through Cloudflare Worker proxy ──────────────────
+async function whoopGet(endpoint, tok){
+  var url=W_API+endpoint;
+  // Route through Cloudflare Worker to avoid CORS on GitHub Pages
+  var proxyUrl=WHOOP_PROXY+'?type=api&url='+encodeURIComponent(url)+'&token='+encodeURIComponent(tok);
+  var r=await fetch(proxyUrl);
+  return r.json();
 }
 
 async function loadWhoop(){
@@ -350,33 +324,29 @@ async function loadWhoop(){
   if(tok&&Date.now()>exp)tok=await refreshWhoop();
   if(!tok){D.whoop=null;return;}
   try{
-    var h={Authorization:'Bearer '+tok};
-    var rs=await Promise.all([
-      fetch(W_API+'/recovery?limit=7',{headers:h}),
-      fetch(W_API+'/activity/sleep?limit=7',{headers:h}),
-      fetch(W_API+'/cycle?limit=7',{headers:h})
+    var results=await Promise.all([
+      whoopGet('/recovery?limit=7',tok),
+      whoopGet('/activity/sleep?limit=7',tok),
+      whoopGet('/cycle?limit=7',tok)
     ]);
-    if(rs[0].status===401){
+    // Check for auth error
+    if(results[0].error==='Unauthorized'||results[0].code===401){
       tok=await refreshWhoop();
       if(!tok){D.whoop=null;return;}
-      h={Authorization:'Bearer '+tok};
-      rs=await Promise.all([
-        fetch(W_API+'/recovery?limit=7',{headers:h}),
-        fetch(W_API+'/activity/sleep?limit=7',{headers:h}),
-        fetch(W_API+'/cycle?limit=7',{headers:h})
+      results=await Promise.all([
+        whoopGet('/recovery?limit=7',tok),
+        whoopGet('/activity/sleep?limit=7',tok),
+        whoopGet('/cycle?limit=7',tok)
       ]);
     }
-    var ps=await Promise.all(rs.map(function(r){return r.json();}));
-    D.whoop={recovery:ps[0].records||[],sleep:ps[1].records||[],cycle:ps[2].records||[]};
+    D.whoop={recovery:results[0].records||[],sleep:results[1].records||[],cycle:results[2].records||[]};
   }catch(e){console.warn('Whoop:',e);D.whoop=null;}
 }
 
 async function refreshWhoop(){
   var ref=localStorage.getItem('w_refresh');if(!ref)return null;
   try{
-    var body='grant_type=refresh_token&refresh_token='+encodeURIComponent(ref)
-      +'&client_id='+encodeURIComponent(C.wid)
-      +'&client_secret='+encodeURIComponent(C.wsec);
+    var body='grant_type=refresh_token&refresh_token='+encodeURIComponent(ref)+'&client_id='+encodeURIComponent(C.wid)+'&client_secret='+encodeURIComponent(C.wsec);
     var r=await fetch(WHOOP_PROXY+'?body='+encodeURIComponent(body));
     var d=await r.json();
     if(d.access_token){
@@ -423,15 +393,11 @@ function daysStale(){if(!D.tph.length)return 999;try{return Math.floor((new Date
 function staleBanner(){var d=daysStale();if(d<7)return'';return'<div class="stale"><div><strong>📊 Fitness data is '+d+' days old</strong><p>Update your CTL, ATL and TSB from TrainingPeaks.</p></div><button class="btn-or" onclick="go(\'fitness\',gi(\'nav-fit\'))">Update Now →</button></div>';}
 function updateFitBadge(){var el=gi('nav-fit');if(!el)return;var b=daysStale()>=7?' <span style="background:var(--orange);color:white;font-size:0.6rem;font-weight:700;padding:0.1rem 0.4rem;border-radius:10px;margin-left:auto">!</span>':'';el.innerHTML='<span class="ic">✍️</span>Update Fitness'+b;}
 
-// ── SHEETS WRITE ──────────────────────────────────────────────────────────────
+// ── SHEETS ────────────────────────────────────────────────────────────────────
 async function writeRow(row){
-  try{
-    await fetch(C.hook||HOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({row:row})});
-    return{ok:true};
-  }catch(e){return{ok:false,error:e.message};}
+  try{await fetch(C.hook||HOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({row:row})});return{ok:true};}
+  catch(e){return{ok:false,error:e.message};}
 }
-
-// ── SHEETS READ ───────────────────────────────────────────────────────────────
 async function loadSheets(){
   var t=[];
   if(C.act)t.push(csv(C.act).then(function(r){D.acts=r;}));
@@ -440,7 +406,14 @@ async function loadSheets(){
   if(C.tpp)t.push(csv(C.tpp).then(function(r){D.tpp=r;}));
   await Promise.allSettled(t);
 }
-async function csv(url){try{var r=await fetch(url);return parseCSV(await r.text());}catch(e){return[];}}
+async function csv(url){
+  try{
+    // Add cache-busting to always get fresh data
+    var sep=url.includes('?')?'&':'?';
+    var r=await fetch(url+sep+'_='+Date.now());
+    return parseCSV(await r.text());
+  }catch(e){return[];}
+}
 function parseCSV(txt){var lines=txt.trim().split('\n');if(lines.length<2)return[];var hdr=lines[0].split(',').map(function(h){return h.trim().replace(/"/g,'');});return lines.slice(1).map(function(l){var v=l.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)||[];var o={};hdr.forEach(function(h,i){o[h]=(v[i]||'').replace(/"/g,'').trim();});return o;}).filter(function(r){return r[hdr[0]];});}
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
@@ -500,10 +473,7 @@ function renderDashboard(){
   var wkT=pl.filter(function(x){try{var d=new Date(x.date);return d>=n&&d<=w7;}catch(e){return false;}}).reduce(function(s,x){return s+(+x.target_tss||0);},0);
   var s=ws(),r0=s?s.recovery_score:null,h0=s?Math.round(s.hrv_rmssd_milli||0):null,rc=r0!==null?(r0>=67?'cg':r0>=34?'co':'cr'):'cp';
   el.innerHTML=(!hw?wCTA():'')+
-    '<div class="g3" style="margin-bottom:1.5rem">'+
-    '<div class="mc"><div class="ml">Today\'s Recovery</div><div class="mv '+rc+'">'+(r0!==null?r0:'—')+'</div><div class="msb">'+(hw?'Whoop / 100':'<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.2rem 0.5rem;border-radius:4px;cursor:pointer;font-size:0.7rem">Connect</button>')+'</div></div>'+
-    '<div class="mc"><div class="ml">Today\'s HRV</div><div class="mv cp">'+(h0!==null?h0+'ms':'—')+'</div><div class="msb">Heart rate variability</div></div>'+
-    '<div class="mc"><div class="ml">Next 7 Days TSS</div><div class="mv co">'+wkT+'</div><div class="msb">'+(IC.ok?'Live from iCal':'From sheet')+'</div></div></div>'+
+    '<div class="g3" style="margin-bottom:1.5rem"><div class="mc"><div class="ml">Today\'s Recovery</div><div class="mv '+rc+'">'+(r0!==null?r0:'—')+'</div><div class="msb">'+(hw?'Whoop / 100':'<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.2rem 0.5rem;border-radius:4px;cursor:pointer;font-size:0.7rem">Connect</button>')+'</div></div><div class="mc"><div class="ml">Today\'s HRV</div><div class="mv cp">'+(h0!==null?h0+'ms':'—')+'</div><div class="msb">Heart rate variability</div></div><div class="mc"><div class="ml">Next 7 Days TSS</div><div class="mv co">'+wkT+'</div><div class="msb">'+(IC.ok?'Live from iCal':'From sheet')+'</div></div></div>'+
     '<div class="g2"><div class="card"><div class="ct">💚 Recovery Score — 7 Days</div><div class="cw"><canvas id="cr"></canvas></div></div><div class="card"><div class="ct">❤️ HRV Trend — 7 Days</div><div class="cw"><canvas id="ch"></canvas></div></div></div>'+
     '<div class="card"><div class="ct">📈 CTL / ATL / TSB — Training Load History</div><div class="cw" style="height:260px"><canvas id="cl"></canvas></div></div>'+
     '<div class="card"><div class="ct">🏃 Recent Activities — TSS</div><div class="cw"><canvas id="ca"></canvas></div></div>';
