@@ -475,42 +475,46 @@ async function loadWhoop(){
   if(tok && Date.now()>exp) tok = await refreshWhoop();
   if(!tok){ D.cycles=[]; D.recoveries=[]; D.sleeps=[]; return; }
   try{
-    // ── Ciclos (strain de hoje = ciclo[0])
-    var cd = await wGet('/cycle?limit=10', tok);
-    D.cycles = cd.records || cd.cycle_collection || [];
-    console.log('Ciclos:', D.cycles.length, '| strain:', D.cycles[0]&&D.cycles[0].score?D.cycles[0].score.strain:'n/a');
+    // ── Ciclos (strain de hoje)
+    var cdRaw = await wGet('/cycle?limit=10', tok);
+    console.log('Ciclos raw keys:', Object.keys(cdRaw));
+    // Worker wraps in {_status, _body} — wGet already parsed _body
+    // cdRaw should be {records:[...]} or {next_token,records:[...]}
+    D.cycles = [];
+    if(Array.isArray(cdRaw)) D.cycles = cdRaw;
+    else if(cdRaw.records) D.cycles = cdRaw.records;
+    else if(cdRaw.cycle_collection) D.cycles = cdRaw.cycle_collection;
+    // If still empty, cdRaw itself might be the cycle
+    if(!D.cycles.length && cdRaw.id) D.cycles = [cdRaw];
+    console.log('Ciclos:', D.cycles.length, D.cycles[0] ? 'strain='+JSON.stringify(D.cycles[0].score) : 'vazio');
 
-    // ── Recovery: tenta endpoint direto primeiro
+    // ── Recovery: pula ciclo[0] (hoje sem recovery), busca ciclo[1+]
     D.recoveries = [];
-    var endpoints = [
-      '/recovery?limit=7',
-      '/v1/recovery?limit=7',
-      '/recovery?limit=10&start=' + encodeURIComponent(new Date(Date.now()-7*864e5).toISOString())
-    ];
-    for(var ei=0; ei<endpoints.length; ei++){
-      var rd = await wGet(endpoints[ei], tok);
-      var raw = JSON.stringify(rd);
-      console.log('Recovery endpoint', endpoints[ei], ':', raw.slice(0,200));
-      var recArr = rd.records || rd.recovery_collection || rd.data || (Array.isArray(rd)?rd:[]);
-      var valid = recArr.filter(function(r){ return r&&r.score&&r.score.recovery_score!=null; });
-      if(valid.length > 0){ D.recoveries = valid; break; }
+    for(var i=1; i<D.cycles.length && D.recoveries.length<7; i++){
+      var rec = await wGet('/cycle/'+D.cycles[i].id+'/recovery', tok);
+      if(rec && !rec._404 && rec.score && rec.score.recovery_score!=null){
+        rec._cycleStart = D.cycles[i].start;
+        D.recoveries.push(rec);
+        console.log('Recovery ciclo',D.cycles[i].id,':',rec.score.recovery_score+'%');
+      }
     }
 
-    // ── Sleep: tenta variantes do endpoint
+    // ── Sleep: tenta endpoints válidos do Whoop v1
     D.sleeps = [];
-    var sleepEndpoints = ['/activity/sleep?limit=7', '/sleep?limit=7', '/activity/sleep?limit=10'];
-    for(var si=0; si<sleepEndpoints.length; si++){
-      var sd = await wGet(sleepEndpoints[si], tok);
-      var sraw = JSON.stringify(sd);
-      console.log('Sleep endpoint', sleepEndpoints[si], ':', sraw.slice(0,200));
-      var sleepArr = sd.records || sd.sleep_collection || sd.data || (Array.isArray(sd)?sd:[]);
-      var validSleep = sleepArr.filter(function(s){ return s && !s.nap; });
-      if(validSleep.length > 0){ D.sleeps = validSleep; break; }
+    var sleepTries = ['/activity/sleep?limit=7', '/activity/sleep', '/sleep?limit=7'];
+    for(var si=0; si<sleepTries.length; si++){
+      var sd = await wGet(sleepTries[si], tok);
+      console.log('Sleep', sleepTries[si], ':', JSON.stringify(sd).slice(0,150));
+      if(sd && !sd._404){
+        var arr = sd.records || sd.sleep_collection || (Array.isArray(sd)?sd:[]);
+        var valid = arr.filter(function(s){ return s&&!s.nap; });
+        if(valid.length){ D.sleeps = valid; break; }
+      }
     }
 
     console.log('Whoop FINAL: ciclos='+D.cycles.length+' rec='+D.recoveries.length+' sono='+D.sleeps.length);
-    if(D.recoveries[0]) console.log('Recovery:', D.recoveries[0].score.recovery_score+'% HRV:'+Math.round(D.recoveries[0].score.hrv_rmssd_milli||0)+'ms');
-    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Sono:', D.sleeps[0].score.sleep_performance_percentage+'%');
+    if(D.recoveries[0]) console.log('Recovery:',D.recoveries[0].score.recovery_score+'%','HRV:',Math.round(D.recoveries[0].score.hrv_rmssd_milli||0)+'ms');
+    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Sono:',D.sleeps[0].score.sleep_performance_percentage+'%');
   } catch(e){ console.warn('Whoop erro:',e); }
 }
 
@@ -528,12 +532,26 @@ async function refreshWhoop(){
 }
 
 async function wGet(endpoint, tok){
-  var url = W_API+endpoint;
+  var url = W_API + endpoint;
   var proxyUrl = PROXY+'?type=api&url='+encodeURIComponent(url)+'&token='+encodeURIComponent(tok);
   var r = await fetch(proxyUrl);
   var t = await r.text();
-  console.log('wGet', endpoint, '| HTTP', r.status, '| raw:', t.slice(0,300));
-  try{ return JSON.parse(t); } catch(e){ console.warn('wGet parse error:', t.slice(0,200)); return {}; }
+  try{
+    var wrapper = JSON.parse(t);
+    // New worker wraps response: {_status, _body}
+    if(wrapper._status !== undefined){
+      console.log('wGet', endpoint, '| Whoop HTTP', wrapper._status, '| body:', wrapper._body.slice(0,200));
+      if(wrapper._status === 404){ return {_404:true}; }
+      if(wrapper._status === 401){ console.warn('Whoop token expirado'); return {}; }
+      try{ return JSON.parse(wrapper._body); } catch(e){ return {}; }
+    }
+    // Old worker format — plain JSON
+    console.log('wGet', endpoint, '| raw:', t.slice(0,200));
+    return wrapper;
+  } catch(e){
+    console.warn('wGet parse error:', t.slice(0,100));
+    return {};
+  }
 }
 
 function disconnectWhoop(){
@@ -767,12 +785,42 @@ function updateFitBadge(){var el=gi('nav-fit');if(!el)return;var b=daysStale()>=
 
 function em(t){if(!t)return'🏋️';var m={Run:'🏃',Ride:'🚴',Swim:'🏊',Strength:'💪',Rest:'😴',Brick:'🔥',Walk:'🚶',Other:'🏋️'};if(m[t])return m[t];var tl=t.toLowerCase();if(/run/.test(tl))return'🏃';if(/ride|bike|cycl/.test(tl))return'🚴';if(/swim|pool/.test(tl))return'🏊';if(/weight|strength|gym/.test(tl))return'💪';return'🏋️';}
 
-function latestRecovery(){return D.recoveries&&D.recoveries[0]?D.recoveries[0].score:null;}
-function latestSleep(){return D.sleeps&&D.sleeps[0]?D.sleeps[0].score:null;}
-function latestCycle(){return D.cycles&&D.cycles[0]?D.cycles[0].score:null;}
+function latestRecovery(){
+  if(D.recoveries&&D.recoveries[0]) return D.recoveries[0].score;
+  var m=JSON.parse(localStorage.getItem('whoop_manual')||'{}');
+  if(m.recovery_score!=null) return {recovery_score:m.recovery_score,hrv_rmssd_milli:m.hrv||0,resting_heart_rate:m.rhr||0};
+  return null;
+}
+function latestSleep(){
+  if(D.sleeps&&D.sleeps[0]) return D.sleeps[0].score;
+  var m=JSON.parse(localStorage.getItem('whoop_manual')||'{}');
+  if(m.sleep_perf!=null) return {sleep_performance_percentage:m.sleep_perf,sleep_efficiency_percentage:m.sleep_eff||0,stage_summary:{total_in_bed_time_milli:(m.sleep_h||7)*3.6e9}};
+  return null;
+}
+function latestCycle(){
+  if(D.cycles&&D.cycles[0]) return D.cycles[0].score;
+  var m=JSON.parse(localStorage.getItem('whoop_manual')||'{}');
+  if(m.strain!=null) return {strain:m.strain};
+  return null;
+}
 
 // ── RENDER ROUTER ─────────────────────────────────────────────────────────────
 function renderPage(){var a=document.querySelector('.page.active');if(!a)return;var id=a.id.replace('page-','');if(id==='briefing')renderBriefing();if(id==='dashboard')renderDashboard();if(id==='plan')renderPlan();if(id==='activities')renderActivities();if(id==='race')renderRace();if(id==='fitness')renderFitness();}
+
+function saveManualWhoop(){
+  var m = {
+    recovery_score: gi('wm-rec')&&gi('wm-rec').value ? +gi('wm-rec').value : null,
+    sleep_perf:     gi('wm-sl')&&gi('wm-sl').value  ? +gi('wm-sl').value  : null,
+    strain:         gi('wm-str')&&gi('wm-str').value ? +gi('wm-str').value : null,
+    hrv:            gi('wm-hrv')&&gi('wm-hrv').value ? +gi('wm-hrv').value : null,
+    rhr:            gi('wm-rhr')&&gi('wm-rhr').value ? +gi('wm-rhr').value : null,
+  };
+  localStorage.setItem('whoop_manual', JSON.stringify(m));
+  var st = gi('wm-st');
+  if(st){ st.textContent = '✓ Salvo'; st.style.color='var(--teal2)'; }
+  // Re-render with new values
+  setTimeout(function(){ renderBriefing(); }, 300);
+}
 
 // ── DAILY BRIEFING ────────────────────────────────────────────────────────────
 async function renderBriefing(){
@@ -848,6 +896,28 @@ async function renderBriefing(){
   var weekActs=D.acts.filter(function(a){try{return new Date(a.date)>=weekStart;}catch(e){return false;}});
   var weekTSS=weekActs.reduce(function(s,a){return s+(+a.tss||0);},0);
 
+  // Manual Whoop input if API not working
+  var m = JSON.parse(localStorage.getItem('whoop_manual')||'{}');
+  var manualSection = (!D.recoveries.length && !D.sleeps.length) ? (
+    '<div style="background:rgba(200,150,42,0.07);border:1px solid rgba(200,150,42,0.2);border-radius:10px;padding:0.9rem 1.1rem;margin-bottom:1.1rem">'
+    +'<div style="font-family:var(--font-mono);font-size:0.62rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.65rem">⚠ API Whoop sem dados — entrada manual</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.5rem;margin-bottom:0.65rem">'
+      +'<div><div style="font-family:var(--font-mono);font-size:0.58rem;color:var(--muted);margin-bottom:0.2rem">RECUPERAÇÃO %</div>'
+        +'<input id="wm-rec" type="number" min="0" max="100" placeholder="49" value="'+(m.recovery_score||'')+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--cream);font-family:var(--font-mono);font-size:0.85rem;padding:0.35rem 0.45rem;text-align:center"/></div>'
+      +'<div><div style="font-family:var(--font-mono);font-size:0.58rem;color:var(--muted);margin-bottom:0.2rem">SONO %</div>'
+        +'<input id="wm-sl" type="number" min="0" max="100" placeholder="56" value="'+(m.sleep_perf||'')+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--cream);font-family:var(--font-mono);font-size:0.85rem;padding:0.35rem 0.45rem;text-align:center"/></div>'
+      +'<div><div style="font-family:var(--font-mono);font-size:0.58rem;color:var(--muted);margin-bottom:0.2rem">ESFORÇO</div>'
+        +'<input id="wm-str" type="number" step="0.1" min="0" max="21" placeholder="9.9" value="'+(m.strain||'')+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--cream);font-family:var(--font-mono);font-size:0.85rem;padding:0.35rem 0.45rem;text-align:center"/></div>'
+      +'<div><div style="font-family:var(--font-mono);font-size:0.58rem;color:var(--muted);margin-bottom:0.2rem">HRV (ms)</div>'
+        +'<input id="wm-hrv" type="number" placeholder="65" value="'+(m.hrv||'')+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--cream);font-family:var(--font-mono);font-size:0.85rem;padding:0.35rem 0.45rem;text-align:center"/></div>'
+      +'<div><div style="font-family:var(--font-mono);font-size:0.58rem;color:var(--muted);margin-bottom:0.2rem">FC REP</div>'
+        +'<input id="wm-rhr" type="number" placeholder="52" value="'+(m.rhr||'')+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--cream);font-family:var(--font-mono);font-size:0.85rem;padding:0.35rem 0.45rem;text-align:center"/></div>'
+    +'</div>'
+    +'<button onclick="saveManualWhoop()" style="background:var(--teal);border:none;border-radius:5px;color:var(--cream);font-size:0.78rem;font-weight:600;padding:0.4rem 1rem;cursor:pointer;font-family:var(--font-head)">Salvar dados do Whoop</button>'
+    +' <span id="wm-st" style="font-family:var(--font-mono);font-size:0.7rem;color:var(--muted);margin-left:0.5rem"></span>'
+    +'</div>'
+  ) : '';
+
   var stravaInfo='';
   if(!localStorage.getItem('s_tok')){
     stravaInfo='<div class="cta" style="border-color:rgba(252,76,2,0.3)"><div><h3>🟠 Conecte o Strava</h3><p>Atividades direto do Strava, sem planilha.</p></div><button class="btn-cta" style="background:#fc4c02" onclick="openStravaModal()">Conectar →</button></div>';
@@ -872,6 +942,7 @@ async function renderBriefing(){
   }
 
   el.innerHTML=
+    manualSection +
     '<p style="font-family:var(--font-mono);font-size:0.68rem;color:var(--muted);margin-bottom:0.85rem;text-transform:uppercase;letter-spacing:0.06em">'
     +new Date().toLocaleDateString('pt-BR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</p>'
     +staleBanner()+stravaInfo+whoopBoxes
