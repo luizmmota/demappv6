@@ -483,28 +483,40 @@ async function loadWhoop(){
   if(tok && Date.now() > exp) tok = await refreshTok();
   if(!tok){ return; }
   try{
-    // Get 7 cycles
-    var cd = await wGet('/cycle?limit=7', tok);
+    // Get last 10 cycles to ensure we find recent recovery
+    // Whoop cycle structure:
+    //   cycle[0] = TODAY (in progress, strain accumulating, NO recovery yet)
+    //   cycle[1] = YESTERDAY (completed after waking up, HAS recovery score)
+    //   cycle[2+] = older days
+    var cd = await wGet('/cycle?limit=10', tok);
     if(!cd.records){ console.warn('Whoop cycles error:', cd); return; }
     D.cycles = cd.records || [];
 
-    // Get recovery for each cycle (404 = no recovery yet for that cycle, normal)
+    // Strain comes from TODAY's cycle (cycle[0])
+    // Recovery comes from COMPLETED cycles (cycle[1], cycle[2]...)
     D.recoveries = [];
     for(var i = 0; i < D.cycles.length; i++){
-      try{
-        var rec = await wGet('/cycle/' + D.cycles[i].id + '/recovery', tok);
-        if(rec && rec.score && rec.score.recovery_score != null){
-          rec._date = D.cycles[i].start;
-          D.recoveries.push(rec);
-        }
-      } catch(e){}
+      var cycleRaw = D.cycles[i];
+      // Try to get recovery for this cycle
+      var rec = await wGet('/cycle/' + cycleRaw.id + '/recovery', tok);
+      // 404 or empty score means this cycle has no recovery (today's in-progress cycle)
+      if(rec && rec.score && rec.score.recovery_score != null){
+        rec._cycleStart = cycleRaw.start;
+        rec._cycleId = cycleRaw.id;
+        D.recoveries.push(rec);
+        // Once we have 7 recoveries, stop
+        if(D.recoveries.length >= 7) break;
+      }
     }
 
-    // Get 7 days sleep
+    // Get sleep — last night's sleep is index [0]
     var sd = await wGet('/activity/sleep?limit=7', tok);
-    D.sleeps = sd.records || [];
+    D.sleeps = (sd.records || []).filter(function(s){ return !s.nap; }); // filter out naps
 
-    console.log('Whoop: cycles=' + D.cycles.length + ' recoveries=' + D.recoveries.length + ' sleeps=' + D.sleeps.length);
+    console.log('Whoop OK — cycles:' + D.cycles.length + ' recoveries:' + D.recoveries.length + ' sleeps:' + D.sleeps.length);
+    if(D.recoveries[0]) console.log('Latest recovery score:', D.recoveries[0].score.recovery_score);
+    if(D.cycles[0] && D.cycles[0].score) console.log('Today strain:', D.cycles[0].score.strain);
+    if(D.sleeps[0] && D.sleeps[0].score) console.log('Last sleep perf:', D.sleeps[0].score.sleep_performance_percentage);
   } catch(e){ console.warn('Whoop load error:', e); }
 }
 
@@ -523,7 +535,10 @@ async function refreshTok(){
 // ── Whoop data helpers ────────────────────────────────────────────────────────
 function latestRecovery(){ return D.recoveries && D.recoveries[0] ? D.recoveries[0].score : null; }
 function latestSleep(){    return D.sleeps && D.sleeps[0] ? D.sleeps[0].score : null; }
-function latestCycle(){    return D.cycles && D.cycles[0] ? D.cycles[0].score : null; }
+// TODAY's strain is always cycle[0] (current in-progress cycle)
+function latestCycle(){ return D.cycles && D.cycles[0] ? D.cycles[0].score : null; }
+// Most recent COMPLETED recovery (cycle[1] typically)
+function latestRecovery(){ return D.recoveries && D.recoveries[0] ? D.recoveries[0].score : null; }
 
 // ── iCAL ──────────────────────────────────────────────────────────────────────
 async function loadICal(){
@@ -707,8 +722,15 @@ async function renderBriefing(){
 
   // Hero section
   var ringClass = recScore === null ? 'ring-n' : recScore >= 67 ? 'ring-g' : recScore >= 34 ? 'ring-o' : 'ring-r';
-  var ringLabel = recScore === null ? 'No data yet' : recScore >= 67 ? '🟢 Green — Go hard' : recScore >= 34 ? '🟡 Yellow — Train smart' : '🔴 Red — Take it easy';
-  var ringDisplay = recScore !== null ? recScore : hasW ? (D.cycles.length ? '—' : '?') : '?';
+  // Determine if recovery is from today or yesterday
+  var recDate = D.recoveries[0] ? new Date(D.recoveries[0]._cycleStart||'') : null;
+  var recIsToday = recDate ? recDate.toDateString() === new Date().toDateString() : false;
+  var recLabel = recScore === null ? 'No data' :
+    recScore >= 67 ? '🟢 Green — Go hard' :
+    recScore >= 34 ? '🟡 Yellow — Train smart' : '🔴 Red — Take it easy';
+  var ringLabel = recScore === null ? 'No recovery data yet' :
+    (recIsToday ? '' : 'Last night · ') + recLabel;
+  var ringDisplay = recScore !== null ? recScore : '—';
   var recNote = '';
   if(recScore === null && D.cycles.length > 0){
     if(D.recoveries.length > 0){
