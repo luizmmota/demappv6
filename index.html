@@ -475,59 +475,33 @@ async function loadWhoop(){
   if(tok && Date.now()>exp) tok = await refreshWhoop();
   if(!tok){ D.cycles=[]; D.recoveries=[]; D.sleeps=[]; return; }
   try{
-    // Cycles — for today's strain (cycle[0])
-    var cd = await wGet('/cycle?limit=7', tok);
+    // ── Ciclos: pega 10, ciclo[0] = HOJE (sem recovery ainda), ciclo[1+] = completos
+    var cd = await wGet('/cycle?limit=10', tok);
     D.cycles = cd.records || cd.cycle_collection || [];
-    console.log('Whoop ciclos:', D.cycles.length, D.cycles[0] ? 'strain='+JSON.stringify(D.cycles[0].score) : 'sem score');
+    console.log('Whoop ciclos:', D.cycles.length, '| strain hoje:', D.cycles[0]&&D.cycles[0].score?D.cycles[0].score.strain:'n/a');
 
-    // Try direct /recovery endpoint first
-    var rd = await wGet('/recovery?limit=7', tok);
-    console.log('Whoop /recovery raw:', JSON.stringify(rd).slice(0,200));
-    var recArr = rd.records || rd.recovery_collection || rd.data || [];
-    // Accept any structure that has a score
-    D.recoveries = recArr.filter(function(r){
-      return r && (
-        (r.score && r.score.recovery_score != null) ||
-        (r.recovery_score != null)
-      );
-    }).map(function(r){
-      // Normalize: some versions put score at top level
-      if(r.recovery_score != null && !r.score){
-        r.score = {
-          recovery_score: r.recovery_score,
-          hrv_rmssd_milli: r.hrv_rmssd_milli||r.heart_rate_variability_rmssd||0,
-          resting_heart_rate: r.resting_heart_rate||0,
-          spo2_percentage: r.spo2_percentage||null,
-          skin_temp_celsius: r.skin_temp_celsius||null
-        };
-      }
-      return r;
-    });
-
-    // If /recovery failed or empty, try per-cycle fallback
-    if(D.recoveries.length === 0 && D.cycles.length > 0){
-      console.log('Whoop /recovery vazio — tentando por ciclo...');
-      for(var i=0; i<Math.min(D.cycles.length,5); i++){
-        var rec = await wGet('/cycle/'+D.cycles[i].id+'/recovery', tok);
-        console.log('Ciclo',D.cycles[i].id,'recovery:', JSON.stringify(rec).slice(0,100));
-        if(rec && rec.score && rec.score.recovery_score != null){
-          rec._cycleStart = D.cycles[i].start;
-          D.recoveries.push(rec);
-        }
+    // ── Recovery: pula ciclo[0] (hoje), busca do ciclo[1] em diante
+    D.recoveries = [];
+    for(var i=1; i<D.cycles.length; i++){
+      var rec = await wGet('/cycle/'+D.cycles[i].id+'/recovery', tok);
+      if(rec && rec.score && rec.score.recovery_score != null){
+        rec._cycleStart = D.cycles[i].start;
+        D.recoveries.push(rec);
+        console.log('Recovery ciclo',D.cycles[i].id,':', rec.score.recovery_score+'% HRV:'+Math.round(rec.score.hrv_rmssd_milli||0)+'ms');
+        if(D.recoveries.length >= 7) break;
       }
     }
 
-    // Sleep
+    // ── Sleep: pega últimos 7, filtra naps
     var sd = await wGet('/activity/sleep?limit=7', tok);
-    console.log('Whoop /sleep raw:', JSON.stringify(sd).slice(0,200));
-    var sleepArr = sd.records || sd.sleep_collection || sd.data || [];
+    var sleepArr = sd.records || sd.sleep_collection || [];
     D.sleeps = sleepArr.filter(function(s){ return s && !s.nap; });
-
     console.log('Whoop FINAL: ciclos='+D.cycles.length+' recuperacoes='+D.recoveries.length+' sono='+D.sleeps.length);
-    if(D.recoveries[0]) console.log('Recuperacao:', D.recoveries[0].score.recovery_score+'%', 'HRV:', D.recoveries[0].score.hrv_rmssd_milli+'ms');
-    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Sono:', D.sleeps[0].score.sleep_performance_percentage+'%');
+    if(D.recoveries[0]) console.log('Ultima recuperacao:', D.recoveries[0].score.recovery_score+'%', 'HRV:', Math.round(D.recoveries[0].score.hrv_rmssd_milli||0)+'ms');
+    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Ultimo sono:', D.sleeps[0].score.sleep_performance_percentage+'%');
   } catch(e){ console.warn('Whoop erro:',e); }
 }
+
 
 async function refreshWhoop(){
   var ref = localStorage.getItem('w_ref'); if(!ref) return null;
@@ -543,9 +517,11 @@ async function refreshWhoop(){
 
 async function wGet(endpoint, tok){
   var url = W_API+endpoint;
-  var r = await fetch(PROXY+'?type=api&url='+encodeURIComponent(url)+'&token='+encodeURIComponent(tok));
+  var proxyUrl = PROXY+'?type=api&url='+encodeURIComponent(url)+'&token='+encodeURIComponent(tok);
+  var r = await fetch(proxyUrl);
   var t = await r.text();
-  try{ return JSON.parse(t); } catch(e){ return {}; }
+  console.log('wGet', endpoint, '| HTTP', r.status, '| raw:', t.slice(0,300));
+  try{ return JSON.parse(t); } catch(e){ console.warn('wGet parse error:', t.slice(0,200)); return {}; }
 }
 
 function disconnectWhoop(){
@@ -1235,7 +1211,7 @@ async function ask(p){
   if(!key) return '⚙️ Chave da API não configurada — clica em Configurações.';
   try{
     var h={'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-    var body={model:'claude-haiku-4-5',max_tokens:700,system:DEMA,messages:[{role:'user',content:p}]};
+    var body={model:'claude-haiku-4-5-20251001',max_tokens:700,system:DEMA,messages:[{role:'user',content:p}]};
     var r=await fetch(CLAUDE,{method:'POST',headers:h,body:JSON.stringify(body)});
     var txt=await r.text();
     console.log('Claude HTTP',r.status,'resp:',txt.slice(0,300));
@@ -1249,7 +1225,7 @@ async function askChat(msgs){
   if(!key) return '⚙️ Chave da API não configurada — clica em Configurações.';
   try{
     var h={'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-    var body={model:'claude-haiku-4-5',max_tokens:700,system:DEMA,messages:msgs.slice(-12)};
+    var body={model:'claude-haiku-4-5-20251001',max_tokens:700,system:DEMA,messages:msgs.slice(-12)};
     var r=await fetch(CLAUDE,{method:'POST',headers:h,body:JSON.stringify(body)});
     var txt=await r.text();
     console.log('Claude chat HTTP',r.status,'resp:',txt.slice(0,300));
