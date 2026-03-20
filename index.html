@@ -454,21 +454,25 @@ async function loadWhoop(){
   if(tok && Date.now()>exp) tok = await refreshWhoop();
   if(!tok){ D.cycles=[]; D.recoveries=[]; D.sleeps=[]; return; }
   try{
-    var cd = await wGet('/cycle?limit=10', tok);
-    if(!cd.records) return;
-    D.cycles = cd.records||[];
-    D.recoveries = [];
-    for(var i=0; i<D.cycles.length; i++){
-      var rec = await wGet('/cycle/'+D.cycles[i].id+'/recovery', tok);
-      if(rec&&rec.score&&rec.score.recovery_score!=null){
-        rec._cycleStart = D.cycles[i].start;
-        D.recoveries.push(rec);
-        if(D.recoveries.length>=7) break;
-      }
-    }
+    // Whoop v1 API: /cycle for strain, /recovery for scores, /activity/sleep for sleep
+    var cd = await wGet('/cycle?limit=7', tok);
+    D.cycles = cd.records || cd.cycle_collection || [];
+
+    // Direct recovery endpoint — works reliably
+    var rd = await wGet('/recovery?limit=7', tok);
+    var recArr = rd.records || rd.recovery_collection || [];
+    D.recoveries = recArr.filter(function(r){
+      return r.score && r.score.recovery_score != null;
+    });
+
     var sd = await wGet('/activity/sleep?limit=7', tok);
-    D.sleeps = (sd.records||[]).filter(function(s){ return !s.nap; });
-    console.log('Whoop: ciclos='+D.cycles.length+' recuperacoes='+D.recoveries.length+' sono='+D.sleeps.length);
+    var sleepArr = sd.records || sd.sleep_collection || [];
+    D.sleeps = sleepArr.filter(function(s){ return !s.nap; });
+
+    console.log('Whoop OK: ciclos='+D.cycles.length+' recuperacoes='+D.recoveries.length+' sono='+D.sleeps.length);
+    if(D.recoveries[0]) console.log('Recuperacao:', D.recoveries[0].score.recovery_score+'%');
+    if(D.cycles[0]&&D.cycles[0].score) console.log('Esforco hoje:', D.cycles[0].score.strain);
+    if(D.sleeps[0]&&D.sleeps[0].score) console.log('Sono:', D.sleeps[0].score.sleep_performance_percentage+'%');
   } catch(e){ console.warn('Whoop erro:',e); }
 }
 
