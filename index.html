@@ -303,7 +303,8 @@ function disconnectWhoop(){
 function renderWhoopTop(){
   var el=gi('ws-top');if(!el)return;
   var tok=localStorage.getItem('w_tok');
-  var ok=D.whoop&&D.whoop.recovery&&D.whoop.recovery.length>0;
+  var connected=D.whoop&&D.whoop.cycle&&D.whoop.cycle.length>0;
+  var ok=connected;
   if(tok&&ok){el.innerHTML='<span style="color:var(--green);font-size:0.75rem;cursor:pointer" onclick="disconnectWhoop()" title="Click to disconnect">💚 Whoop ✓</span>';}
   else if(tok){el.innerHTML='<span style="color:var(--orange);font-size:0.75rem">💚 Connecting…</span>';}
   else{el.innerHTML='<button onclick="openWhoopModal()" style="background:var(--green);border:none;color:white;padding:0.3rem 0.75rem;border-radius:6px;cursor:pointer;font-size:0.75rem;font-weight:700">💚 Connect Whoop</button>';}
@@ -430,7 +431,12 @@ function parseCSV(txt){var lines=txt.trim().split('\n');if(lines.length<2)return
 function renderPage(){var a=document.querySelector('.page.active');if(!a)return;var id=a.id.replace('page-','');if(id==='briefing')renderBriefing();if(id==='dashboard')renderDashboard();if(id==='plan')renderPlan();if(id==='race')renderRace();if(id==='fitness')renderFitness();}
 function wCTA(){return'<div class="wcta"><div><h3>💚 Connect your Whoop</h3><p>See your real recovery, HRV, and sleep data.</p></div><button class="btn-wc" onclick="openWhoopModal()">Connect →</button></div>';}
 // Recovery from /cycle/{id}/recovery returns {score:{recovery_score,hrv_rmssd_milli,resting_heart_rate,...}}
-function ws(){return D.whoop&&D.whoop.recovery&&D.whoop.recovery[0]?D.whoop.recovery[0].score:null;}
+function ws(){
+  if(D.whoop&&D.whoop.recovery&&D.whoop.recovery[0]&&D.whoop.recovery[0].score) return D.whoop.recovery[0].score;
+  // Fall back to most recent cycle score if no recovery yet today
+  if(D.whoop&&D.whoop.cycle&&D.whoop.cycle[0]&&D.whoop.cycle[0].score) return null;
+  return null;
+}
 function wsl(){return D.whoop&&D.whoop.sleep&&D.whoop.sleep[0]?D.whoop.sleep[0].score:null;}
 function wcy(){return D.whoop&&D.whoop.cycle&&D.whoop.cycle[0]?D.whoop.cycle[0].score:null;}
 function em(t){var m={Run:'🏃',Ride:'🚴',Bike:'🚴',Swim:'🏊',Strength:'💪',Rest:'😴',Brick:'🔥',Walk:'🚶',Other:'🏋️'};return m[t]||'🏋️';}
