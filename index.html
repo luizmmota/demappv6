@@ -1111,17 +1111,17 @@ async function saveFit(){
 
 // ── MARKDOWN → HTML ──────────────────────────────────────────────────────────────
 function mdHtml(t){
-  return t
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g,'<em>$1</em>')
-    .replace(/^#{1,3}\s+(.+)$/gm,'<strong style="color:var(--accent);display:block;margin-top:0.5rem">$1</strong>')
-    .replace(/^[-•]\s+(.+)$/gm,'<span style="display:block;padding-left:0.75rem">· $1</span>')
-    .replace(/^\d+\.\s+(.+)$/gm,'<span style="display:block;padding-left:0.75rem">$1</span>')
-    .replace(/
-
-/g,'<br><br>')
-    .replace(/
-/g,'<br>');
+  if(!t) return '';
+  var p = t.split('\n\n');
+  return p.map(function(para){
+    return para
+      .replace(/[*][*](.+?)[*][*]/g,'<strong>$1</strong>')
+      .replace(/[*]([^*]+)[*]/g,'<em>$1</em>')
+      .replace(/^#{1,3} (.+)$/gm,'<strong style="color:var(--accent);font-size:0.9em;display:block;margin:0.4rem 0 0.2rem">$1</strong>')
+      .replace(/^[-] (.+)$/gm,'<span style="display:block;padding-left:0.75rem">· $1</span>')
+      .replace(/^[0-9]+[.] (.+)$/gm,'<span style="display:block;padding-left:0.75rem">$1</span>')
+      .replace(/\n/g,'<br>');
+  }).join('<br><br>');
 }
 
 // ── CHAT ──────────────────────────────────────────────────────────────────────
