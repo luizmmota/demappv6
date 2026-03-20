@@ -1235,7 +1235,7 @@ async function ask(p){
   if(!key) return '⚙️ Chave da API não configurada — clica em Configurações.';
   try{
     var h={'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-    var body={model:'claude-sonnet-4-5-20251001',max_tokens:700,system:DEMA,messages:[{role:'user',content:p}]};
+    var body={model:'claude-haiku-4-5',max_tokens:700,system:DEMA,messages:[{role:'user',content:p}]};
     var r=await fetch(CLAUDE,{method:'POST',headers:h,body:JSON.stringify(body)});
     var txt=await r.text();
     console.log('Claude HTTP',r.status,'resp:',txt.slice(0,300));
@@ -1249,7 +1249,7 @@ async function askChat(msgs){
   if(!key) return '⚙️ Chave da API não configurada — clica em Configurações.';
   try{
     var h={'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-    var body={model:'claude-sonnet-4-5-20251001',max_tokens:700,system:DEMA,messages:msgs.slice(-12)};
+    var body={model:'claude-haiku-4-5',max_tokens:700,system:DEMA,messages:msgs.slice(-12)};
     var r=await fetch(CLAUDE,{method:'POST',headers:h,body:JSON.stringify(body)});
     var txt=await r.text();
     console.log('Claude chat HTTP',r.status,'resp:',txt.slice(0,300));
