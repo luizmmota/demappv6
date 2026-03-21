@@ -375,7 +375,7 @@ var WHOOP_CSEC  = '4e07dc52a6a5be5d0e4e09b1e172fba309fe1b4eda578b72a68cf60d6f787
 var STRAVA_CID  = '214333';
 var STRAVA_CSEC = '03ab133ddb87dcd2643cb7e93aee9f240c864432';
 var REDIR       = 'http://localhost';
-var W_API       = 'https://api.prod.whoop.com/developer/v1';
+var W_API       = 'https://api.prod.whoop.com/developer/v2';
 var S_API       = 'https://www.strava.com/api/v3';
 var CLAUDE      = 'https://api.anthropic.com/v1/messages';
 
@@ -466,7 +466,7 @@ async function submitWhoop(){
 function saveWhoopTok(d){
   localStorage.setItem('w_tok', d.access_token);
   localStorage.setItem('w_exp', Date.now()+(d.expires_in||3600)*1000);
-  localStorage.setItem('w_ref', d.refresh_token||'');
+  localStorage.setItem('w_refresh', d.refresh_token||'');
 }
 
 async function loadWhoop(){
@@ -501,7 +501,7 @@ async function loadWhoop(){
 
 
 async function refreshWhoop(){
-  var ref = localStorage.getItem('w_ref'); if(!ref) return null;
+  var ref = localStorage.getItem('w_refresh'); if(!ref) return null;
   try{
     var body = 'grant_type=refresh_token&refresh_token='+encodeURIComponent(ref)
       +'&client_id='+encodeURIComponent(WHOOP_CID)+'&client_secret='+encodeURIComponent(WHOOP_CSEC);
